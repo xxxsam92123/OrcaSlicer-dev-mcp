@@ -20,6 +20,9 @@
 #include "slic3r/GUI/HMS.hpp"
 #include "slic3r/GUI/Jobs/UpgradeNetworkJob.hpp"
 #include "slic3r/GUI/HttpServer.hpp"
+
+namespace Slic3r { namespace GUI { namespace RemoteAPI { class Server; class Controller; } } }
+
 #include "../Utils/PrintHost.hpp"
 
 #include <wx/app.h>
@@ -338,6 +341,8 @@ private:
     bool             m_show_error_msgdlg{false};
     wxString         m_info_dialog_content;
     HttpServer       m_http_server;
+    std::unique_ptr<RemoteAPI::Server>     m_remote_api_server;
+    std::unique_ptr<RemoteAPI::Controller> m_remote_api_controller;
     bool             m_show_gcode_window{true};
     boost::thread    m_check_network_thread;
 public:
@@ -569,6 +574,9 @@ public:
     void            start_http_server(const std::string& provider = ORCA_CLOUD_PROVIDER);
     void            start_http_server(int port, const std::string& provider = ORCA_CLOUD_PROVIDER);
     void            stop_http_server();
+    void            start_remote_api();
+    void            stop_remote_api();
+    RemoteAPI::Server& remote_api_server();
     void            switch_staff_pick(bool on);
 
     void            on_show_check_privacy_dlg(int online_login = 0, const std::string& provider = ORCA_CLOUD_PROVIDER);

@@ -345,6 +345,7 @@ public:
     bool is_legend_shown() const { return m_legend_visible && m_legend_enabled; }
     void show_legend(bool show) { m_legend_visible = show; }
     void enable_legend(bool enable) { m_legend_enabled = enable; }
+    void render_toolpaths_with_camera(const Camera& camera);
     float get_legend_height() { return m_legend_height; }
 
     void export_toolpaths_to_obj(const char* filename) const;
@@ -376,4 +377,3 @@ private:
 } // namespace Slic3r
 
 #endif // slic3r_GCodeViewer_hpp_
-

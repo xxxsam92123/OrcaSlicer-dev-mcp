@@ -1,4 +1,5 @@
 #include "Plater.hpp"
+#include "RemoteAPI/RemoteAPIController.hpp"
 #include "../Utils/NetworkAgent.hpp"
 #include "../Utils/NetworkAgentFactory.hpp"
 #include "libslic3r/Config.hpp"
@@ -7663,7 +7664,8 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                 // convert_model_if(model, answer_convert_from_imperial_units == wxID_YES);
             }
 
-             if (!is_project_file && model.looks_like_multipart_object()) {
+             if (!is_project_file && model.looks_like_multipart_object() &&
+                 !RemoteAPI::Controller::api_ui_task_active()) {
                MessageDialog msg_dlg(q, _L("This file contains several objects positioned at multiple heights.\nInstead of considering them as multiple objects, should \nthe file be loaded as a single object with multiple parts\?") + "\n",
                     _L("Multi-part object detected"), wxICON_WARNING | wxYES | wxNO);
                 if (msg_dlg.ShowModal() == wxID_YES) {
@@ -13238,6 +13240,7 @@ void Plater::load_project(wxString const& filename2,
     sidebar().set_flushing_volume_warning(has_modify);
 
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << __LINE__ << " load project done";
+    RemoteAPI::Controller::notify_project_opened();
 }
 
 // BBS: save logic
