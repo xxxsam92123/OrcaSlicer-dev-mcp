@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <numeric>
 #include <stdio.h>
 #include <memory>
 
@@ -11,6 +12,7 @@
 
 #include "AABBTreeLines.hpp"
 #include "ExtrusionEntity.hpp"
+#include "ExtrusionEntityCollection.hpp"
 #include "FillBase.hpp"
 #include "FillRectilinear.hpp"
 #include "FillLightning.hpp"
@@ -239,6 +241,8 @@ struct SurfaceFillParams
     bool 			bridge;
     // Non-negative for a bridge.
     float 			bridge_angle = 0.f;
+    // External bridge grid cells must remain separate through fill batching.
+    bool            preserve_bridge_grid = false;
 
     // FillParams
     float       	density = 0.f;
@@ -294,6 +298,7 @@ struct SurfaceFillParams
 		// Sort first by decreasing bridging angle, so that the bridges are processed with priority when trimming one layer by the other.
 		if (this->bridge_angle > rhs.bridge_angle) return true;
 		if (this->bridge_angle < rhs.bridge_angle) return false;
+		RETURN_COMPARE_NON_EQUAL(preserve_bridge_grid);
 
 		RETURN_COMPARE_NON_EQUAL(extruder);
 		RETURN_COMPARE_NON_EQUAL_TYPED(unsigned, pattern);
@@ -336,6 +341,7 @@ struct SurfaceFillParams
 				this->fixed_angle             == rhs.fixed_angle             &&
 				this->bridge                  == rhs.bridge                  &&
 				this->bridge_angle            == rhs.bridge_angle            &&
+				this->preserve_bridge_grid    == rhs.preserve_bridge_grid    &&
 				this->density                 == rhs.density                 &&
 				this->multiline               == rhs.multiline               &&
 //				this->dont_adjust             == rhs.dont_adjust             &&
@@ -987,6 +993,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                     }
                 }
                 params.bridge_angle = float(surface.bridge_angle);
+                params.preserve_bridge_grid = surface.external_bridge_grid;
 
                 // ORCA: Align infill angle to model
                 float align_offset = 0.f;
@@ -1101,6 +1108,12 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 		Polygons all_polygons;
 		for (SurfaceFill &fill : surface_fills)
 			if (! fill.expolygons.empty()) {
+				if (fill.params.preserve_bridge_grid) {
+					// Grid cells already have disjoint boundaries. Safety-unioning them
+					// here can merge adjacent cells and erase their angle clusters.
+					append(all_polygons, to_polygons(fill.expolygons));
+					continue;
+				}
 				if (fill.expolygons.size() > 1 || ! all_polygons.empty()) {
 					Polygons polys = to_polygons(std::move(fill.expolygons));
 		            // Make a union of polygons, use a safety offset, subtract the preceding polygons.
@@ -1270,6 +1283,96 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
 	const Slic3r::BoundingBox bbox 			= this->object()->bounding_box();
 	const auto                resolution 	= this->object()->print()->config().resolution.value;
 
+    // Collect the shared edges of the external bridge grid cells. An edge shared
+    // by two cells is an internal grid line, which gets one overhang-perimeter
+    // wall exactly on the shared edge (the default wall/fill overlap of half a
+    // line width on each side). Edges that appear only once are on the outer
+    // contour of the bridge surface; they are NOT regenerated here so that the
+    // existing perimeter wall remains the single wall there (fused, no overlap).
+    std::map<std::pair<Point, Point>, size_t> grid_shared_edges;
+    const Flow                             *grid_flow      = nullptr;
+    size_t                                  grid_region_id = size_t(-1);
+    for (const SurfaceFill &surface_fill : surface_fills) {
+        if (! surface_fill.surface.external_bridge_grid)
+            continue;
+        if (grid_flow == nullptr) {
+            grid_flow      = &surface_fill.params.flow;
+            grid_region_id = surface_fill.region_id;
+        }
+        for (const ExPolygon &expoly : surface_fill.expolygons) {
+            const Points &pts = expoly.contour.points;
+            for (size_t i = 0; i < pts.size(); ++ i) {
+                Point a = pts[i];
+                Point b = pts[(i + 1) % pts.size()];
+                if (b < a)
+                    std::swap(a, b);
+                ++ grid_shared_edges[std::make_pair(a, b)];
+            }
+        }
+    }
+
+    auto emit_grid_walls = [&]() {
+        if (grid_flow == nullptr || grid_shared_edges.empty())
+            return;
+        auto *wall_batch = new ExtrusionEntityCollection();
+        wall_batch->no_sort = true;
+        std::vector<std::pair<Point, Point>> shared_edges;
+        shared_edges.reserve(grid_shared_edges.size());
+        for (const auto &[edge, count] : grid_shared_edges) {
+            if (count < 2)
+                continue;
+            shared_edges.push_back(edge);
+        }
+
+        auto normalized_direction = [](const std::pair<Point, Point> &edge) {
+            const Point direction = edge.second - edge.first;
+            const coord_t divisor = std::gcd(direction.x(), direction.y());
+            return std::make_pair(direction.x() / divisor, direction.y() / divisor);
+        };
+        std::sort(shared_edges.begin(), shared_edges.end(), [&](const auto &lhs, const auto &rhs) {
+            const auto lhs_direction = normalized_direction(lhs);
+            const auto rhs_direction = normalized_direction(rhs);
+            if (lhs_direction != rhs_direction)
+                return lhs_direction < rhs_direction;
+            if (lhs.first.x() != rhs.first.x())
+                return lhs.first.x() < rhs.first.x();
+            if (lhs.first.y() != rhs.first.y())
+                return lhs.first.y() < rhs.first.y();
+            return lhs.second < rhs.second;
+        });
+
+        std::vector<Polyline> wall_lines;
+        for (const auto &edge : shared_edges) {
+            if (wall_lines.empty() ||
+                wall_lines.back().points.back().x() != edge.first.x() ||
+                wall_lines.back().points.back().y() != edge.first.y() ||
+                cross2(wall_lines.back().points.back() - wall_lines.back().points.front(),
+                       edge.second - edge.first) != 0) {
+                Polyline grid_line;
+                grid_line.points = { edge.first, edge.second };
+                wall_lines.push_back(std::move(grid_line));
+            } else {
+                wall_lines.back().points.push_back(edge.second);
+            }
+        }
+
+        for (const Polyline &grid_line : wall_lines) {
+            ExtrusionPath wall_path(erOverhangPerimeter,
+                                    grid_flow->mm3_per_mm(),
+                                    grid_flow->width(),
+                                    grid_flow->height());
+            wall_path.polyline = Polyline3(grid_line);
+            wall_batch->entities.push_back(new ExtrusionPath(wall_path));
+        }
+        if (! wall_batch->empty())
+            m_regions[grid_region_id]->fills.entities.push_back(wall_batch);
+        else
+            delete wall_batch;
+    };
+
+    // Emit all internal grid walls before any cell starts generating bridge fill.
+    emit_grid_walls();
+
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
 	{
 		static int iRun = 0;
@@ -1423,10 +1526,6 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
                 expoly.symmetric_y(params.symmetric_y_axis);
             }
 
-			// Spacing is modified by the filler to indicate adjustments. Reset it for each expolygon.
-			f->spacing = surface_fill.params.spacing;
-			surface_fill.surface.expolygon = std::move(expoly);
-
 			if(surface_fill.params.bridge && surface_fill.surface.is_external() && surface_fill.params.density > 99.0){
 				params.density = layerm->region().config().bridge_density.get_abs_value(1.0);
 				params.dont_adjust = true;
@@ -1442,6 +1541,10 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
                 if (f->layer_id > 0 && f->layer_id <= elefant_layers)
                     params.density = 1.0f - (1.0f - elefant_density) * (elefant_layers - (f->layer_id - 1)) / elefant_layers; // Reverse calculation - The higher layer number means the higher density. Counting starts from the second layer.
             }
+
+			// Spacing is modified by the filler to indicate adjustments. Reset it for each expolygon.
+			f->spacing = surface_fill.params.spacing;
+			surface_fill.surface.expolygon = std::move(expoly);
             // make fill
 			f->fill_surface_extrusion(&surface_fill.surface,
 				params,

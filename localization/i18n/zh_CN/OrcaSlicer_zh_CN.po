@@ -12446,6 +12446,21 @@ msgstr "当悬垂超过此指定阈值时，强制部件冷却风扇按照下方
 msgid "External bridge infill direction"
 msgstr "外部桥接填充方向"
 
+msgid "Split external bridge into grid"
+msgstr "将外部桥接分割为网格"
+
+msgid "External bridge grid cells X"
+msgstr "外部桥接网格 X 方向单元数"
+
+msgid "External bridge grid cells Y"
+msgstr "外部桥接网格 Y 方向单元数"
+
+msgid "External bridge grid angle step"
+msgstr "外部桥接网格角度步进"
+
+msgid "cells"
+msgstr "单元"
+
 # AI Translated
 #, no-c-format, no-boost-format
 msgid ""

@@ -11954,6 +11954,21 @@ msgstr ""
 msgid "External bridge infill direction"
 msgstr ""
 
+msgid "Split external bridge into grid"
+msgstr ""
+
+msgid "External bridge grid cells X"
+msgstr ""
+
+msgid "External bridge grid cells Y"
+msgstr ""
+
+msgid "External bridge grid angle step"
+msgstr ""
+
+msgid "cells"
+msgstr ""
+
 #, no-c-format, no-boost-format
 msgid ""
 "External Bridging angle override.\n"

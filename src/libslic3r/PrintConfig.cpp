@@ -1419,6 +1419,41 @@ void PrintConfigDef::init_fff_params()
     def->max = 180;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.));
+
+    def = this->add("external_bridge_grid_enable", coBool);
+    def->label = L("Split external bridge into grid");
+    def->category = L("Strength");
+    def->tooltip = L("Split external bridge surfaces into rectangular cells and alternate the bridge direction between adjacent cells. Each axis supports 1 to 32 cells; small or fragmented surfaces may fall back to one bridge region.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("external_bridge_grid_cells_x", coInt);
+    def->label = L("External bridge grid cells X");
+    def->category = L("Strength");
+    def->sidetext = L("cells");
+    def->min = 1;
+    def->max = 32;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("external_bridge_grid_cells_y", coInt);
+    def->label = L("External bridge grid cells Y");
+    def->category = L("Strength");
+    def->sidetext = L("cells");
+    def->min = 1;
+    def->max = 32;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("external_bridge_grid_angle_step", coFloat);
+    def->label = L("External bridge grid angle step");
+    def->category = L("Strength");
+    def->tooltip = L("Alternating angle offset applied to adjacent external bridge cells.");
+    def->sidetext = u8"°";
+    def->min = 0;
+    def->max = 45;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(15.));
     
     // ORCA: Internal bridge angle override
     def = this->add("internal_bridge_angle", coFloat);
