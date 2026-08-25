@@ -90,6 +90,11 @@ struct FillParams
     coordf_t    lateral_lattice_angle_2    { 0.f };
     InfillPattern pattern{ ipRectilinear };
 
+    // Internal solid grid parameters. The angle is in radians.
+    int         internal_solid_grid_cells_x { 2 };
+    int         internal_solid_grid_cells_y { 2 };
+    float       internal_solid_grid_angle_step { 0.2617993878f };
+
     // For Lateral Honeycomb
     float       infill_overhang_angle    { 60 };
 

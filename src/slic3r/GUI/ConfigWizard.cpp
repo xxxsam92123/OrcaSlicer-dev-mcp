@@ -1581,6 +1581,11 @@ void ConfigWizardIndex::go_to(size_t i)
         Refresh();
 
         new_active->on_activate();
+
+        if (wxWindow *page_parent = new_active->GetParent())
+            page_parent->Layout();
+        if (wxWindow *dialog = GetParent())
+            dialog->Layout();
     }
 }
 
@@ -1794,6 +1799,12 @@ void ConfigWizard::priv::load_pages()
     btn_finish->Enable(any_fff_selected || any_sla_selected || custom_printer_selected);
 
     index->go_to(former_active);   // Will restore the active item/page if possible
+    if (index->active_page() == nullptr) {
+        if (!only_sla_mode)
+            index->go_to(page_custom);
+        else if (any_sla_selected)
+            index->go_to(page_sla_materials);
+    }
 
     q->Layout();
 // This Refresh() is needed to avoid ugly artifacts after printer selection, when no one vendor was selected from the very beginnig
@@ -2706,7 +2717,6 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
     vsizer->Add(hline, 0, wxEXPAND | wxLEFT | wxRIGHT, VERTICAL_SPACING);
     vsizer->Add(p->btnsizer, 0, wxEXPAND | wxALL, DIALOG_MARGIN);
 
-    SetSizer(vsizer);
     SetSizerAndFit(vsizer);
 
     // We can now enable scrolling on hscroll

@@ -114,7 +114,7 @@ enum InfillPattern : int {
     ipHoneycomb, ip3DHoneycomb, ipLateralHoneycomb, ipLateralLattice,
     ipCrossHatch, ipTpmsD, ipTpmsFK, ipGyroid,
     ipConcentric, ipHilbertCurve, ipArchimedeanChords, ipOctagramSpiral,
-    ipSupportBase, ipConcentricInternal,
+    ipSupportBase, ipConcentricInternal, ipInternalSolidGrid,
     ipCount,
 };
 
@@ -1283,6 +1283,10 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<SurfaceFillOrder>, top_surface_fill_order))
     ((ConfigOptionEnum<SurfaceFillOrder>, bottom_surface_fill_order))
     ((ConfigOptionEnum<InfillPattern>, internal_solid_infill_pattern))
+    ((ConfigOptionInt,                  internal_solid_grid_cells_x))
+    ((ConfigOptionInt,                  internal_solid_grid_cells_y))
+    ((ConfigOptionFloat,                internal_solid_grid_angle_step))
+    ((ConfigOptionBool,                 internal_solid_grid_walls))
     ((ConfigOptionFloatOrPercent,       outer_wall_line_width))
     ((ConfigOptionFloatsNullable,       outer_wall_speed))
     ((ConfigOptionFloat,                infill_direction))

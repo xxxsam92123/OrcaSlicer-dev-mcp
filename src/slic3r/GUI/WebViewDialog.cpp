@@ -36,10 +36,7 @@ namespace GUI {
 WebViewPanel::WebViewPanel(wxWindow *parent)
         : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
  {
-    wxString url = wxString::Format("file://%s/web/homepage/index.html", from_u8(resources_dir()));
-    wxString strlang = wxGetApp().current_language_code_safe();
-    if (strlang != "")
-        url = wxString::Format("file://%s/web/homepage/index.html?lang=%s", from_u8(resources_dir()), strlang);
+    const wxString url = WebView::BuildResourceUrl("web/homepage/index.html", true);
 
     wxBoxSizer* topsizer = new wxBoxSizer(wxVERTICAL);
     
@@ -88,10 +85,8 @@ WebViewPanel::WebViewPanel(wxWindow *parent)
         wxLogError("Could not init m_browser");
         return;
     }
-    m_browser->Hide();
-    SetSizer(topsizer);
-
     topsizer->Add(m_browser, wxSizerFlags().Expand().Proportion(1));
+    SetSizer(topsizer);
 
     // Log backend information
     /* m_browser->GetUserAgent() may lead crash

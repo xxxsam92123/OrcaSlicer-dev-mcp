@@ -1086,6 +1086,7 @@ static std::vector<std::string> s_Preset_print_options{
     "minimum_sparse_infill_area",
     "reduce_infill_retraction",
     "internal_solid_infill_pattern",
+    "internal_solid_grid_cells_x", "internal_solid_grid_cells_y", "internal_solid_grid_angle_step", "internal_solid_grid_walls",
     "gap_fill_target",
     "ironing_type",
     "ironing_pattern",

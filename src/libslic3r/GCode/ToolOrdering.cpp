@@ -123,10 +123,12 @@ unsigned int LayerTools::extruder(const ExtrusionEntityCollection &extrusions, c
 	assert(region.config().internal_solid_filament_id.value > 0);
 	assert(region.config().top_surface_filament_id.value > 0);
 	assert(region.config().bottom_surface_filament_id.value > 0);
-	// 1 based extruder ID.
+    // 1 based extruder ID.
     unsigned int extruder = 1;
     if (this->extruder_override == 0) {
-        if (extrusions.has_infill()) {
+        if (extrusions.internal_solid_infill_wall) {
+            extruder = region.config().internal_solid_filament_id;
+        } else if (extrusions.has_infill()) {
             if (extrusions.has_solid_infill()) {
                 ExtrusionRole role = extrusions.role();
                 if (role == erTopSolidInfill || role == erIroning)

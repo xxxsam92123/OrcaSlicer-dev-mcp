@@ -27,6 +27,7 @@
 #include "FillLightning.hpp"
 // BBS: new infill pattern header
 #include "FillConcentricInternal.hpp"
+#include "FillInternalSolidGrid.hpp"
 #include "FillCrossHatch.hpp"
 // #define INFILL_DEBUG_OUTPUT
 
@@ -67,6 +68,7 @@ Fill* Fill::new_from_type(const InfillPattern type)
     case ipLightning:           return new FillLightning::Filler();
     // BBS: for internal solid infill only
     case ipConcentricInternal:  return new FillConcentricInternal();
+    case ipInternalSolidGrid:   return new FillInternalSolidGrid();
     // BBS: for bottom and top surface only
     // Orca: Replace BBS implementation with Prusa implementation
     case ipMonotonicLine:       return new FillMonotonicLines();
