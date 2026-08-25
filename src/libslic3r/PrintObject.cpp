@@ -1396,6 +1396,10 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "top_surface_fill_order"
             || opt_key == "bottom_surface_fill_order"
             || opt_key == "internal_solid_infill_pattern"
+            || opt_key == "internal_solid_grid_cells_x"
+            || opt_key == "internal_solid_grid_cells_y"
+            || opt_key == "internal_solid_grid_angle_step"
+            || opt_key == "internal_solid_grid_walls"
             || opt_key == "external_fill_link_max_length"
             || opt_key == "infill_anchor"
             || opt_key == "infill_anchor_max"
@@ -4429,6 +4433,7 @@ void PrintObject::combine_infill()
              // later to overlap perimeters, we need to counteract that too.
                 ((infill_pattern == ipRectilinear   ||
                   infill_pattern == ipMonotonic     ||
+                  infill_pattern == ipInternalSolidGrid ||
                   infill_pattern == ipGrid          ||
                   infill_pattern == ipLateralLattice     ||
                   infill_pattern == ipLine          ||

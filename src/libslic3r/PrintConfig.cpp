@@ -277,7 +277,8 @@ static t_config_enum_values s_keys_map_InfillPattern {
     { "concentric", ipConcentric },
     { "hilbertcurve", ipHilbertCurve },
     { "archimedeanchords", ipArchimedeanChords },
-    { "octagramspiral", ipOctagramSpiral }
+    { "octagramspiral", ipOctagramSpiral },
+    { "internal_solid_grid", ipInternalSolidGrid }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(InfillPattern)
 
@@ -2455,7 +2456,42 @@ void PrintConfigDef::init_fff_params()
     def->enum_keys_map = &ConfigOptionEnum<InfillPattern>::get_enum_values();
     def->enum_values   = def_top_fill_pattern->enum_values;
     def->enum_labels   = def_top_fill_pattern->enum_labels;
+    def->enum_values.push_back("internal_solid_grid");
+    def->enum_labels.push_back(L("Internal solid grid"));
     def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipMonotonic));
+
+    def = this->add("internal_solid_grid_cells_x", coInt);
+    def->label = L("Internal solid grid cells X");
+    def->category = L("Strength");
+    def->sidetext = L("cells");
+    def->min = 1;
+    def->max = 32;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("internal_solid_grid_cells_y", coInt);
+    def->label = L("Internal solid grid cells Y");
+    def->category = L("Strength");
+    def->sidetext = L("cells");
+    def->min = 1;
+    def->max = 32;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("internal_solid_grid_angle_step", coFloat);
+    def->label = L("Internal solid grid angle step");
+    def->category = L("Strength");
+    def->tooltip = L("Alternating angle offset applied to adjacent internal solid grid cells.");
+    def->sidetext = u8"\u00b0";
+    def->min = 0;
+    def->max = 45;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(15.));
+
+    def = this->add("internal_solid_grid_walls", coBool);
+    def->category = L("Strength");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
     
     def = this->add("outer_wall_line_width", coFloatOrPercent);
     def->label = L("Outer wall");

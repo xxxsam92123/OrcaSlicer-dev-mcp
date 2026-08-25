@@ -42,6 +42,8 @@ public:
     double          bridge_angle;       // in radians, ccw, 0 = East, only 0+ (negative means undefined)
     unsigned short  extra_perimeters;
     bool            external_bridge_grid { false };
+    bool            internal_solid_grid { false };
+    unsigned short  internal_solid_grid_index { 0 };
 
     Surface(SurfaceType _surface_type = stInternal)
         : surface_type(_surface_type),
@@ -51,7 +53,8 @@ public:
         : surface_type(rhs.surface_type), expolygon(rhs.expolygon),
             thickness(rhs.thickness), thickness_layers(rhs.thickness_layers),
             bridge_angle(rhs.bridge_angle), extra_perimeters(rhs.extra_perimeters),
-            external_bridge_grid(rhs.external_bridge_grid)
+            external_bridge_grid(rhs.external_bridge_grid),
+            internal_solid_grid(rhs.internal_solid_grid), internal_solid_grid_index(rhs.internal_solid_grid_index)
         {};
 
     Surface(SurfaceType _surface_type, const ExPolygon &_expolygon)
@@ -62,13 +65,15 @@ public:
         : surface_type(other.surface_type), expolygon(_expolygon),
             thickness(other.thickness), thickness_layers(other.thickness_layers),
             bridge_angle(other.bridge_angle), extra_perimeters(other.extra_perimeters),
-            external_bridge_grid(other.external_bridge_grid)
+            external_bridge_grid(other.external_bridge_grid),
+            internal_solid_grid(other.internal_solid_grid), internal_solid_grid_index(other.internal_solid_grid_index)
         {};
     Surface(Surface &&rhs)
         : surface_type(rhs.surface_type), expolygon(std::move(rhs.expolygon)),
             thickness(rhs.thickness), thickness_layers(rhs.thickness_layers),
             bridge_angle(rhs.bridge_angle), extra_perimeters(rhs.extra_perimeters),
-            external_bridge_grid(rhs.external_bridge_grid)
+            external_bridge_grid(rhs.external_bridge_grid),
+            internal_solid_grid(rhs.internal_solid_grid), internal_solid_grid_index(rhs.internal_solid_grid_index)
         {};
     Surface(SurfaceType _surface_type, const ExPolygon &&_expolygon)
         : surface_type(_surface_type), expolygon(std::move(_expolygon)),
@@ -78,7 +83,8 @@ public:
         : surface_type(other.surface_type), expolygon(std::move(_expolygon)),
             thickness(other.thickness), thickness_layers(other.thickness_layers),
             bridge_angle(other.bridge_angle), extra_perimeters(other.extra_perimeters),
-            external_bridge_grid(other.external_bridge_grid)
+            external_bridge_grid(other.external_bridge_grid),
+            internal_solid_grid(other.internal_solid_grid), internal_solid_grid_index(other.internal_solid_grid_index)
         {};
 
     Surface& operator=(const Surface &rhs)
@@ -90,6 +96,8 @@ public:
         bridge_angle     = rhs.bridge_angle;
         extra_perimeters = rhs.extra_perimeters;
         external_bridge_grid = rhs.external_bridge_grid;
+        internal_solid_grid = rhs.internal_solid_grid;
+        internal_solid_grid_index = rhs.internal_solid_grid_index;
         return *this;
     }
 
@@ -102,6 +110,8 @@ public:
         bridge_angle     = rhs.bridge_angle;
         extra_perimeters = rhs.extra_perimeters;
         external_bridge_grid = rhs.external_bridge_grid;
+        internal_solid_grid = rhs.internal_solid_grid;
+        internal_solid_grid_index = rhs.internal_solid_grid_index;
         return *this;
     }
 

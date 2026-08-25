@@ -12742,6 +12742,25 @@ msgstr ""
 msgid "Internal solid infill pattern"
 msgstr ""
 
+msgid "Internal solid grid"
+msgstr ""
+
+#, no-c-format, no-boost-format
+msgid "Internal solid grid cells X"
+msgstr ""
+
+#, no-c-format, no-boost-format
+msgid "Internal solid grid cells Y"
+msgstr ""
+
+#, no-c-format, no-boost-format
+msgid "Internal solid grid angle step"
+msgstr ""
+
+#, no-c-format, no-boost-format
+msgid "Alternating angle offset applied to adjacent internal solid grid cells."
+msgstr ""
+
 msgid "Line pattern of internal solid infill. if the detect narrow internal solid infill be enabled, the concentric pattern will be used for the small area."
 msgstr ""
 

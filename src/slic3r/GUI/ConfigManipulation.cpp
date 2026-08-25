@@ -835,9 +835,16 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
     toggle_line("top_surface_fill_order", has_top_shell && is_centered_fill(config->opt_enum<InfillPattern>("top_surface_pattern")));
     toggle_line("bottom_surface_fill_order", has_bottom_shell && is_centered_fill(config->opt_enum<InfillPattern>("bottom_surface_pattern")));
 
+    for (auto el : { "external_bridge_grid_cells_x", "external_bridge_grid_cells_y", "external_bridge_grid_angle_step" })
+        toggle_line(el, config->opt_bool("external_bridge_grid_enable"));
+
+    const bool internal_solid_grid = config->opt_enum<InfillPattern>("internal_solid_infill_pattern") == ipInternalSolidGrid;
+    for (auto el : { "internal_solid_grid_cells_x", "internal_solid_grid_cells_y", "internal_solid_grid_angle_step" })
+        toggle_line(el, internal_solid_grid);
+
     for (auto el : { "infill_direction", "sparse_infill_line_width", "gap_fill_target","filter_out_gap_fill","infill_wall_overlap",
         "bridge_angle", "external_bridge_grid_enable", "external_bridge_grid_cells_x", "external_bridge_grid_cells_y", "external_bridge_grid_angle_step", "internal_bridge_angle", "relative_bridge_angle",
-        "solid_infill_direction", "solid_infill_rotate_template", "internal_solid_infill_pattern", "internal_solid_filament_id", "top_surface_filament_id", "bottom_surface_filament_id",
+        "solid_infill_direction", "solid_infill_rotate_template", "internal_solid_infill_pattern", "internal_solid_grid_cells_x", "internal_solid_grid_cells_y", "internal_solid_grid_angle_step", "internal_solid_filament_id", "top_surface_filament_id", "bottom_surface_filament_id",
         })
         toggle_field(el, have_infill || has_solid_infill);
     for (auto el : { "sparse_infill_speed", "bridge_speed", "internal_bridge_speed"})

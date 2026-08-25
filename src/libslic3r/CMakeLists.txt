@@ -158,6 +158,8 @@ set(lisbslic3r_sources
     Fill/FillGyroid.hpp
     Fill/FillHoneycomb.cpp
     Fill/FillHoneycomb.hpp
+    Fill/FillInternalSolidGrid.cpp
+    Fill/FillInternalSolidGrid.hpp
     Fill/Fill.hpp
     Fill/FillLightning.cpp
     Fill/FillLightning.hpp
@@ -295,6 +297,8 @@ set(lisbslic3r_sources
     Geometry/VoronoiVisualUtils.hpp
     ExternalBridgeGrid.cpp
     ExternalBridgeGrid.hpp
+    InternalSolidGrid.cpp
+    InternalSolidGrid.hpp
     Int128.hpp
     KDTreeIndirect.hpp
     Layer.cpp
