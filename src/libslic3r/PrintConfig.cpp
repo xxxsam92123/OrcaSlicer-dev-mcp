@@ -1456,7 +1456,7 @@ void PrintConfigDef::init_fff_params()
     def->max = 45;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(15.));
-    
+
     // ORCA: Internal bridge angle override
     def = this->add("internal_bridge_angle", coFloat);
     def->label = L("Internal bridge infill direction");
@@ -2488,6 +2488,8 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(15.));
 
+    // Do not consult this compatibility key while generating walls. Old presets
+    // may carry it, but selecting the grid pattern always includes its walls.
     def = this->add("internal_solid_grid_walls", coBool);
     def->category = L("Strength");
     def->mode = comAdvanced;

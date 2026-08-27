@@ -32,6 +32,7 @@ ExtrusionEntityCollection& ExtrusionEntityCollection::operator=(const ExtrusionE
         this->entities[i] = this->entities[i]->clone();
     this->no_sort                    = other.no_sort;
     this->internal_solid_infill_wall = other.internal_solid_infill_wall;
+    this->external_bridge_grid_wall  = other.external_bridge_grid_wall;
     return *this;
 }
 
@@ -40,6 +41,7 @@ void ExtrusionEntityCollection::swap(ExtrusionEntityCollection &c)
     std::swap(this->entities, c.entities);
     std::swap(this->no_sort, c.no_sort);
     std::swap(this->internal_solid_infill_wall, c.internal_solid_infill_wall);
+    std::swap(this->external_bridge_grid_wall, c.external_bridge_grid_wall);
 }
 
 void ExtrusionEntityCollection::clear()

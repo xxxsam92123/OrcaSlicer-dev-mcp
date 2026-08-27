@@ -34,13 +34,17 @@ public:
     // Transient routing marker: keep perimeter path behavior while selecting
     // the internal-solid filament for grid walls.
     bool internal_solid_infill_wall { false };
+    bool external_bridge_grid_wall { false };
     ExtrusionEntityCollection(): no_sort(false) {}
     ExtrusionEntityCollection(const ExtrusionEntityCollection &other)
-        : no_sort(other.no_sort), internal_solid_infill_wall(other.internal_solid_infill_wall), is_reverse(other.is_reverse)
+        : no_sort(other.no_sort), internal_solid_infill_wall(other.internal_solid_infill_wall),
+          external_bridge_grid_wall(other.external_bridge_grid_wall), is_reverse(other.is_reverse)
         { this->append(other.entities); }
     ExtrusionEntityCollection(ExtrusionEntityCollection &&other)
         : entities(std::move(other.entities)), no_sort(other.no_sort),
-          internal_solid_infill_wall(other.internal_solid_infill_wall), is_reverse(other.is_reverse) {}
+          internal_solid_infill_wall(other.internal_solid_infill_wall),
+          external_bridge_grid_wall(other.external_bridge_grid_wall), is_reverse(other.is_reverse) {}
+
     explicit ExtrusionEntityCollection(const ExtrusionPaths &paths);
     ExtrusionEntityCollection& operator=(const ExtrusionEntityCollection &other);
     ExtrusionEntityCollection& operator=(ExtrusionEntityCollection &&other)
@@ -48,6 +52,7 @@ public:
         this->entities = std::move(other.entities);
         this->no_sort  = other.no_sort;
         this->internal_solid_infill_wall = other.internal_solid_infill_wall;
+        this->external_bridge_grid_wall = other.external_bridge_grid_wall;
         is_reverse     = other.is_reverse;
         return *this;
     }

@@ -236,8 +236,7 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
     REQUIRE(enabled.first_wall_entity != size_t(-1));
     REQUIRE(enabled.first_bridge_fill_entity != size_t(-1));
     REQUIRE(enabled.first_wall_entity < enabled.first_bridge_fill_entity);
-    // A 2x2 grid has one vertical and one horizontal internal grid line. The
-    // center hole may split each line into multiple segments, so at least two
-    // overhang-perimeter wall paths must be emitted for the split cells.
-    REQUIRE(enabled.bridge_wall_loops >= 2);
+    // The shared grid boundaries are merged into continuous straight paths.
+    // A valid split must therefore emit at least one overhang-perimeter path.
+    REQUIRE(enabled.bridge_wall_loops >= 1);
 }

@@ -1286,6 +1286,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionInt,                  internal_solid_grid_cells_x))
     ((ConfigOptionInt,                  internal_solid_grid_cells_y))
     ((ConfigOptionFloat,                internal_solid_grid_angle_step))
+    // Kept for preset compatibility. Grid walls are always emitted for this pattern.
     ((ConfigOptionBool,                 internal_solid_grid_walls))
     ((ConfigOptionFloatOrPercent,       outer_wall_line_width))
     ((ConfigOptionFloatsNullable,       outer_wall_speed))

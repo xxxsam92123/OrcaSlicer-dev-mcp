@@ -1,11 +1,12 @@
 #include "FillInternalSolidGrid.hpp"
+
 #include "../InternalSolidGrid.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <iterator>
 
 namespace Slic3r {
-
 namespace {
 
 float cell_angle(float angle, unsigned short cell_index, int cells_x, float angle_step)
@@ -26,14 +27,11 @@ Polylines FillInternalSolidGrid::fill_surface(const Surface *surface, const Fill
 
     struct RestoreAngle {
         float &angle;
-        float  original_angle;
+        float original_angle;
         ~RestoreAngle() { angle = original_angle; }
     } restore_angle { angle, angle };
 
-    const InternalSolidGridSettings settings {
-        params.internal_solid_grid_cells_x,
-        params.internal_solid_grid_cells_y
-    };
+    const InternalSolidGridSettings settings { params.internal_solid_grid_cells_x, params.internal_solid_grid_cells_y };
     if (surface->internal_solid_grid) {
         angle = cell_angle(restore_angle.original_angle, surface->internal_solid_grid_index,
                            settings.cells_x, params.internal_solid_grid_angle_step);
@@ -44,7 +42,6 @@ Polylines FillInternalSolidGrid::fill_surface(const Surface *surface, const Fill
     if (cells.size() == 1)
         return FillRectilinear::fill_surface(surface, params);
 
-    // Keep cell materialization local to this filler; group_fills retains one complete SurfaceFill.
     Polylines result;
     result.reserve(cells.size());
     for (const Surface &cell : cells) {

@@ -3,6 +3,7 @@
 
 #include "libslic3r.h"
 #include "ExPolygon.hpp"
+#include <memory>
 
 namespace Slic3r {
 
@@ -42,6 +43,7 @@ public:
     double          bridge_angle;       // in radians, ccw, 0 = East, only 0+ (negative means undefined)
     unsigned short  extra_perimeters;
     bool            external_bridge_grid { false };
+    std::shared_ptr<const Polylines> external_bridge_grid_walls;
     bool            internal_solid_grid { false };
     unsigned short  internal_solid_grid_index { 0 };
 
@@ -54,6 +56,7 @@ public:
             thickness(rhs.thickness), thickness_layers(rhs.thickness_layers),
             bridge_angle(rhs.bridge_angle), extra_perimeters(rhs.extra_perimeters),
             external_bridge_grid(rhs.external_bridge_grid),
+            external_bridge_grid_walls(rhs.external_bridge_grid_walls),
             internal_solid_grid(rhs.internal_solid_grid), internal_solid_grid_index(rhs.internal_solid_grid_index)
         {};
 
@@ -66,6 +69,7 @@ public:
             thickness(other.thickness), thickness_layers(other.thickness_layers),
             bridge_angle(other.bridge_angle), extra_perimeters(other.extra_perimeters),
             external_bridge_grid(other.external_bridge_grid),
+            external_bridge_grid_walls(other.external_bridge_grid_walls),
             internal_solid_grid(other.internal_solid_grid), internal_solid_grid_index(other.internal_solid_grid_index)
         {};
     Surface(Surface &&rhs)
@@ -73,6 +77,7 @@ public:
             thickness(rhs.thickness), thickness_layers(rhs.thickness_layers),
             bridge_angle(rhs.bridge_angle), extra_perimeters(rhs.extra_perimeters),
             external_bridge_grid(rhs.external_bridge_grid),
+            external_bridge_grid_walls(rhs.external_bridge_grid_walls),
             internal_solid_grid(rhs.internal_solid_grid), internal_solid_grid_index(rhs.internal_solid_grid_index)
         {};
     Surface(SurfaceType _surface_type, const ExPolygon &&_expolygon)
@@ -84,6 +89,7 @@ public:
             thickness(other.thickness), thickness_layers(other.thickness_layers),
             bridge_angle(other.bridge_angle), extra_perimeters(other.extra_perimeters),
             external_bridge_grid(other.external_bridge_grid),
+            external_bridge_grid_walls(other.external_bridge_grid_walls),
             internal_solid_grid(other.internal_solid_grid), internal_solid_grid_index(other.internal_solid_grid_index)
         {};
 
@@ -96,6 +102,7 @@ public:
         bridge_angle     = rhs.bridge_angle;
         extra_perimeters = rhs.extra_perimeters;
         external_bridge_grid = rhs.external_bridge_grid;
+        external_bridge_grid_walls = rhs.external_bridge_grid_walls;
         internal_solid_grid = rhs.internal_solid_grid;
         internal_solid_grid_index = rhs.internal_solid_grid_index;
         return *this;
@@ -110,6 +117,7 @@ public:
         bridge_angle     = rhs.bridge_angle;
         extra_perimeters = rhs.extra_perimeters;
         external_bridge_grid = rhs.external_bridge_grid;
+        external_bridge_grid_walls = rhs.external_bridge_grid_walls;
         internal_solid_grid = rhs.internal_solid_grid;
         internal_solid_grid_index = rhs.internal_solid_grid_index;
         return *this;

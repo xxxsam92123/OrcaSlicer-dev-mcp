@@ -18,6 +18,10 @@ struct ExternalBridgeGridSettings
 Surfaces split_external_bridge_surface(
     const Surface &surface, const ExternalBridgeGridSettings &settings);
 
+// Return the shared cell boundaries of a successfully split bridge surface.
+// The returned paths are open center lines and contain no outer boundary.
+Polylines external_bridge_grid_walls(const Surfaces &cells);
+
 } // namespace Slic3r
 
 #endif // slic3r_ExternalBridgeGrid_hpp_
