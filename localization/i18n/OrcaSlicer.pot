@@ -12020,6 +12020,26 @@ msgid "cells"
 msgstr ""
 
 #, no-c-format, no-boost-format
+msgid "Split external bridge into grid"
+msgstr ""
+
+#, no-c-format, no-boost-format
+msgid "External bridge grid cells X"
+msgstr ""
+
+#, no-c-format, no-boost-format
+msgid "External bridge grid cells Y"
+msgstr ""
+
+#, no-c-format, no-boost-format
+msgid "External bridge grid angle step"
+msgstr ""
+
+#, no-c-format, no-boost-format
+msgid "Alternating angle offset applied to adjacent external bridge cells."
+msgstr ""
+
+#, no-c-format, no-boost-format
 msgid ""
 "External Bridging angle override.\n"
 "If left to zero, the bridging angle will be calculated automatically for each specific bridge.\n"
@@ -12759,6 +12779,9 @@ msgstr ""
 
 #, no-c-format, no-boost-format
 msgid "Alternating angle offset applied to adjacent internal solid grid cells."
+msgstr ""
+
+msgid "cells"
 msgstr ""
 
 msgid "Line pattern of internal solid infill. if the detect narrow internal solid infill be enabled, the concentric pattern will be used for the small area."

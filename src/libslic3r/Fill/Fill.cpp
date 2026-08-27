@@ -22,6 +22,7 @@
 #include "FillTpmsFK.hpp"
 #include "FillConcentric.hpp"
 #include "../InternalSolidGrid.hpp"
+#include "../ExternalBridgeGrid.hpp"
 #include "libslic3r.h"
 
 namespace Slic3r {
@@ -245,10 +246,10 @@ struct SurfaceFillParams
     float 			bridge_angle = 0.f;
     // External bridge grid cells must remain separate through fill batching.
     bool            preserve_bridge_grid = false;
+    bool            external_bridge_grid = false;
     int             internal_solid_grid_cells_x = 2;
     int             internal_solid_grid_cells_y = 2;
     float           internal_solid_grid_angle_step = 0.f;
-
 
     // FillParams
     float       	density = 0.f;
@@ -305,10 +306,10 @@ struct SurfaceFillParams
 		if (this->bridge_angle > rhs.bridge_angle) return true;
 		if (this->bridge_angle < rhs.bridge_angle) return false;
 		RETURN_COMPARE_NON_EQUAL(preserve_bridge_grid);
+		RETURN_COMPARE_NON_EQUAL_TYPED(unsigned, external_bridge_grid);
 		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_cells_x);
 		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_cells_y);
 		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_angle_step);
-
 
 		RETURN_COMPARE_NON_EQUAL(extruder);
 		RETURN_COMPARE_NON_EQUAL_TYPED(unsigned, pattern);
@@ -351,11 +352,11 @@ struct SurfaceFillParams
 				this->fixed_angle             == rhs.fixed_angle             &&
 				this->bridge                  == rhs.bridge                  &&
 				this->bridge_angle            == rhs.bridge_angle            &&
-				this->preserve_bridge_grid    == rhs.preserve_bridge_grid    &&
+                this->preserve_bridge_grid    == rhs.preserve_bridge_grid    &&
+                this->external_bridge_grid    == rhs.external_bridge_grid    &&
 				this->internal_solid_grid_cells_x == rhs.internal_solid_grid_cells_x &&
 				this->internal_solid_grid_cells_y == rhs.internal_solid_grid_cells_y &&
 				this->internal_solid_grid_angle_step == rhs.internal_solid_grid_angle_step &&
-
 				this->density                 == rhs.density                 &&
 				this->multiline               == rhs.multiline               &&
 //				this->dont_adjust             == rhs.dont_adjust             &&
@@ -1008,11 +1009,11 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                 }
                 params.bridge_angle = float(surface.bridge_angle);
                 params.preserve_bridge_grid = surface.external_bridge_grid;
+                params.external_bridge_grid = surface.external_bridge_grid;
                 if (params.pattern == ipInternalSolidGrid && params.extrusion_role == erSolidInfill) {
                     params.internal_solid_grid_cells_x = region_config.internal_solid_grid_cells_x;
                     params.internal_solid_grid_cells_y = region_config.internal_solid_grid_cells_y;
                     params.internal_solid_grid_angle_step = Geometry::deg2rad(float(region_config.internal_solid_grid_angle_step.value));
-
                 }
 
                 // ORCA: Align infill angle to model
@@ -1303,95 +1304,40 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
 	const Slic3r::BoundingBox bbox 			= this->object()->bounding_box();
 	const auto                resolution 	= this->object()->print()->config().resolution.value;
 
-    // Collect the shared edges of the external bridge grid cells. An edge shared
-    // by two cells is an internal grid line, which gets one overhang-perimeter
-    // wall exactly on the shared edge (the default wall/fill overlap of half a
-    // line width on each side). Edges that appear only once are on the outer
-    // contour of the bridge surface; they are NOT regenerated here so that the
-    // existing perimeter wall remains the single wall there (fused, no overlap).
-    std::map<std::pair<Point, Point>, size_t> grid_shared_edges;
-    const Flow                             *grid_flow      = nullptr;
-    size_t                                  grid_region_id = size_t(-1);
+    // group_fills separates bridge cells by angle and later regularizes their
+    // polygons. Keep official cell separation and use the exact shared
+    // boundaries saved by the splitter instead of rebuilding them from
+    // post-grouping polygons.
+    std::map<size_t, std::vector<const Polylines *>> external_bridge_grid_walls_by_region;
+    std::set<std::pair<size_t, const Polylines *>> emitted_external_bridge_grid_walls;
     for (const SurfaceFill &surface_fill : surface_fills) {
-        if (! surface_fill.surface.external_bridge_grid)
+        if (!surface_fill.params.bridge || !surface_fill.surface.external_bridge_grid_walls)
             continue;
-        if (grid_flow == nullptr) {
-            grid_flow      = &surface_fill.params.flow;
-            grid_region_id = surface_fill.region_id;
-        }
-        for (const ExPolygon &expoly : surface_fill.expolygons) {
-            const Points &pts = expoly.contour.points;
-            for (size_t i = 0; i < pts.size(); ++ i) {
-                Point a = pts[i];
-                Point b = pts[(i + 1) % pts.size()];
-                if (b < a)
-                    std::swap(a, b);
-                ++ grid_shared_edges[std::make_pair(a, b)];
-            }
-        }
+        const Polylines *walls = surface_fill.surface.external_bridge_grid_walls.get();
+        if (emitted_external_bridge_grid_walls.emplace(surface_fill.region_id, walls).second)
+            external_bridge_grid_walls_by_region[surface_fill.region_id].push_back(walls);
     }
-
-    auto emit_grid_walls = [&]() {
-        if (grid_flow == nullptr || grid_shared_edges.empty())
-            return;
+    for (auto &[region_id, wall_sets] : external_bridge_grid_walls_by_region) {
+        LayerRegion *layerm = m_regions[region_id];
+        const Flow wall_flow = layerm->bridging_flow(
+            frPerimeter, this->object()->config().thick_bridges);
         auto *wall_batch = new ExtrusionEntityCollection();
         wall_batch->no_sort = true;
-        std::vector<std::pair<Point, Point>> shared_edges;
-        shared_edges.reserve(grid_shared_edges.size());
-        for (const auto &[edge, count] : grid_shared_edges) {
-            if (count < 2)
-                continue;
-            shared_edges.push_back(edge);
-        }
-
-        auto normalized_direction = [](const std::pair<Point, Point> &edge) {
-            const Point direction = edge.second - edge.first;
-            const coord_t divisor = std::gcd(direction.x(), direction.y());
-            return std::make_pair(direction.x() / divisor, direction.y() / divisor);
-        };
-        std::sort(shared_edges.begin(), shared_edges.end(), [&](const auto &lhs, const auto &rhs) {
-            const auto lhs_direction = normalized_direction(lhs);
-            const auto rhs_direction = normalized_direction(rhs);
-            if (lhs_direction != rhs_direction)
-                return lhs_direction < rhs_direction;
-            if (lhs.first.x() != rhs.first.x())
-                return lhs.first.x() < rhs.first.x();
-            if (lhs.first.y() != rhs.first.y())
-                return lhs.first.y() < rhs.first.y();
-            return lhs.second < rhs.second;
-        });
-
-        std::vector<Polyline> wall_lines;
-        for (const auto &edge : shared_edges) {
-            if (wall_lines.empty() ||
-                wall_lines.back().points.back().x() != edge.first.x() ||
-                wall_lines.back().points.back().y() != edge.first.y() ||
-                cross2(wall_lines.back().points.back() - wall_lines.back().points.front(),
-                       edge.second - edge.first) != 0) {
-                Polyline grid_line;
-                grid_line.points = { edge.first, edge.second };
-                wall_lines.push_back(std::move(grid_line));
-            } else {
-                wall_lines.back().points.push_back(edge.second);
+        wall_batch->external_bridge_grid_wall = true;
+        for (const Polylines *walls : wall_sets)
+            for (const Polyline &wall_line : *walls) {
+                ExtrusionPath wall_path(erOverhangPerimeter,
+                                        wall_flow.mm3_per_mm(),
+                                        wall_flow.width(),
+                                        wall_flow.height());
+                wall_path.polyline = Polyline3(wall_line);
+                wall_batch->entities.push_back(new ExtrusionPath(std::move(wall_path)));
             }
-        }
-
-        for (const Polyline &grid_line : wall_lines) {
-            ExtrusionPath wall_path(erOverhangPerimeter,
-                                    grid_flow->mm3_per_mm(),
-                                    grid_flow->width(),
-                                    grid_flow->height());
-            wall_path.polyline = Polyline3(grid_line);
-            wall_batch->entities.push_back(new ExtrusionPath(wall_path));
-        }
-        if (! wall_batch->empty())
-            m_regions[grid_region_id]->fills.entities.push_back(wall_batch);
+        if (!wall_batch->entities.empty())
+            layerm->fills.entities.push_back(wall_batch);
         else
             delete wall_batch;
-    };
-
-    // Emit all external bridge grid walls before any cell starts generating bridge fill.
-    emit_grid_walls();
+    }
 
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
 	{
@@ -1451,7 +1397,7 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
         FillParams params;
         params.density 		     = float(0.01 * surface_fill.params.density);
         params.multiline         = surface_fill.params.multiline;
-		params.dont_adjust		 = false; //  surface_fill.params.dont_adjust;
+		params.dont_adjust		 = surface_fill.params.pattern == ipInternalSolidGrid;
         params.anchor_length     = surface_fill.params.anchor_length;
 		params.anchor_length_max = surface_fill.params.anchor_length_max;
 		params.resolution        = resolution;
@@ -1558,10 +1504,11 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
                 wall_batch->no_sort = true;
                 wall_batch->internal_solid_infill_wall = true;
                 for (const Polyline &grid_line : wall_lines) {
+                    const Flow wall_flow = layerm->flow(frPerimeter);
                     ExtrusionPath wall_path(erPerimeter,
-                                            surface_fill.params.flow.mm3_per_mm(),
-                                            surface_fill.params.flow.width(),
-                                            surface_fill.params.flow.height());
+                                            wall_flow.mm3_per_mm(),
+                                            wall_flow.width(),
+                                            wall_flow.height());
                     wall_path.polyline = Polyline3(grid_line);
                     wall_batch->entities.push_back(new ExtrusionPath(wall_path));
                 }

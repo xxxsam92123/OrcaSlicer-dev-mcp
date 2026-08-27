@@ -12528,6 +12528,11 @@ msgstr "单元"
 
 # AI Translated
 #, no-c-format, no-boost-format
+msgid "Alternating angle offset applied to adjacent external bridge cells."
+msgstr "应用于相邻外部桥接单元的交替角度偏移。"
+
+# AI Translated
+#, no-c-format, no-boost-format
 msgid ""
 "External Bridging angle override.\n"
 "If left to zero, the bridging angle will be calculated automatically for each specific bridge.\n"
@@ -13433,18 +13438,22 @@ msgstr ""
 msgid "Internal solid infill pattern"
 msgstr "内部实心填充图案"
 
+# AI Translated
 msgid "Internal solid grid"
 msgstr "内部实心网格"
 
 # AI Translated
+#, no-c-format, no-boost-format
 msgid "Internal solid grid cells X"
 msgstr "内部实心网格 X 方向单元数"
 
 # AI Translated
+#, no-c-format, no-boost-format
 msgid "Internal solid grid cells Y"
 msgstr "内部实心网格 Y 方向单元数"
 
 # AI Translated
+#, no-c-format, no-boost-format
 msgid "Internal solid grid angle step"
 msgstr "内部实心网格角度步进"
 

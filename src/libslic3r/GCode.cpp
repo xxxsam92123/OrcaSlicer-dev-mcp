@@ -7622,7 +7622,8 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
                 for (ExtrusionEntity *fill : extrusions) {
                     const auto *eec = dynamic_cast<const ExtrusionEntityCollection*>(fill);
                     if (! ironing && eec != nullptr && eec->no_sort &&
-                        (eec->role() == erOverhangPerimeter || eec->internal_solid_infill_wall))
+                        (eec->role() == erOverhangPerimeter ||
+                         eec->internal_solid_infill_wall || eec->external_bridge_grid_wall))
                         wall_batches.emplace_back(fill);
                     else
                         sortable_extrusions.emplace_back(fill);
