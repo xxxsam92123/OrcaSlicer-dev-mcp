@@ -1468,12 +1468,12 @@ void ExtruderGroup::update_ams()
     size_t left  = 4;
     size_t index = 0;
     for (size_t i = i4; i < ams_n4 && left > 0; ++i, ++index, left -= 2) {
-        ams[index]->Update(i < ams_4.size() ? ams_4[i] : info4);
+        ams[index]->UpdateInfo(i < ams_4.size() ? ams_4[i] : info4);
         ams[index]->Refresh();
         ams[index]->Open();
     }
     for (size_t i = i1; i < ams_n1 && left > 0; ++i, ++index, --left) {
-        ams[index]->Update(i < ams_1.size() ? ams_1[i] : info1);
+        ams[index]->UpdateInfo(i < ams_1.size() ? ams_1[i] : info1);
         ams[index]->Refresh();
         ams[index]->Open();
     }
@@ -3871,7 +3871,7 @@ bool Sidebar::reset_bed_type_combox_choices(bool is_sidebar_init)
         }
     }
     m_last_combo_bedtype_count = p->combo_printer_bed->GetCount();
-    if (!is_sidebar_init && &p->plater->get_partplate_list()) {
+    if (!is_sidebar_init) {
         p->plater->get_partplate_list().check_all_plate_local_bed_type(m_cur_combox_bed_types);
     }
     return true;
