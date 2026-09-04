@@ -22,6 +22,11 @@ Surfaces split_external_bridge_surface(
 // The returned paths are open center lines and contain no outer boundary.
 Polylines external_bridge_grid_walls(const Surfaces &cells);
 
+// Grow each cell into its neighbor before bridge fill generation, while keeping
+// the resulting fill area within the original bridge surface.
+ExPolygons external_bridge_grid_infill_area(
+    const Surface &cell, double wall_overlap, double line_width);
+
 } // namespace Slic3r
 
 #endif // slic3r_ExternalBridgeGrid_hpp_

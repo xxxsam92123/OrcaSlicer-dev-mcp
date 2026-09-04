@@ -2769,6 +2769,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("overhang_reverse", "quality_settings_overhangs#reverse-on-even");
         optgroup->append_single_option_line("overhang_reverse_internal_only", "quality_settings_overhangs#reverse-internal-only");
         optgroup->append_single_option_line("overhang_reverse_threshold", "quality_settings_overhangs#reverse-threshold");
+        optgroup->append_single_option_line("overhang_wall_overlap", "quality_settings_overhangs#overhang-wall-line-overlap");
 
     page = add_options_page(L("Strength"), "custom-gcode_strength"); // ORCA: icon only visible on placeholders
         optgroup = page->new_optgroup(L("Walls"), L"param_wall");
@@ -2839,6 +2840,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("external_bridge_grid_cells_x", "strength_settings_advanced#bridge-infill-direction");
         optgroup->append_single_option_line("external_bridge_grid_cells_y", "strength_settings_advanced#bridge-infill-direction");
         optgroup->append_single_option_line("external_bridge_grid_angle_step", "strength_settings_advanced#bridge-infill-direction");
+        optgroup->append_single_option_line("external_bridge_grid_infill_wall_overlap", "strength_settings_advanced#bridge-infill-direction");
         optgroup->append_single_option_line("internal_bridge_angle", "strength_settings_advanced#bridge-infill-direction"); // ORCA: Internal bridge angle override
         optgroup->append_single_option_line("relative_bridge_angle", "strength_settings_advanced#relative-bridge-angle");
         optgroup->append_single_option_line("minimum_sparse_infill_area", "strength_settings_advanced#minimum-sparse-infill-threshold");

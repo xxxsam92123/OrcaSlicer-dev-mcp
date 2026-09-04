@@ -332,13 +332,17 @@ Points SkeletalTrapezoidation::discretize(const VD::edge_type& vd_edge, const st
 SkeletalTrapezoidation::SkeletalTrapezoidation(const Polygons& polys, const BeadingStrategy& beading_strategy,
                                                double transitioning_angle, coord_t discretization_step_size,
                                                coord_t transition_filter_dist, coord_t allowed_filter_deviation,
-                                               coord_t beading_propagation_transition_dist
+                                               coord_t beading_propagation_transition_dist,
+                                               const Polygons *supported_area,
+                                               coord_t overhang_spacing_reduction
     ): transitioning_angle(transitioning_angle),
     discretization_step_size(discretization_step_size),
     transition_filter_dist(transition_filter_dist),
     allowed_filter_deviation(allowed_filter_deviation),
     beading_propagation_transition_dist(beading_propagation_transition_dist),
-    beading_strategy(beading_strategy)
+    beading_strategy(beading_strategy),
+    supported_area(supported_area),
+    overhang_spacing_reduction(overhang_spacing_reduction)
 {
     constructFromPolygons(polys);
 }
@@ -1798,6 +1802,13 @@ void SkeletalTrapezoidation::generateJunctions(ptr_vector_t<BeadingPropagation>&
                 break;
             }
             Point junction(a + (ab.cast<int64_t>() * int64_t(bead_R - start_R) / int64_t(end_R - start_R)).cast<coord_t>());
+            if (supported_area != nullptr && overhang_spacing_reduction > 0 && junction_idx > 0 &&
+                !std::any_of(supported_area->begin(), supported_area->end(), [&junction](const Polygon &polygon) {
+                    return polygon.contains(junction);
+                })) {
+                bead_R = std::max(end_R, bead_R - coord_t(junction_idx) * overhang_spacing_reduction);
+                junction = a + (ab.cast<int64_t>() * int64_t(bead_R - start_R) / int64_t(end_R - start_R)).cast<coord_t>();
+            }
             if (bead_R > start_R - scaled<coord_t>(0.005))
             { // Snap to start node if it is really close, in order to be able to see 3-way intersection later on more robustly
                 junction = a;

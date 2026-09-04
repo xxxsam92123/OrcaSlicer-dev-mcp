@@ -8,9 +8,12 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace Slic3r {
+
+static Polylines make_external_bridge_grid_walls(const Surfaces &cells);
 
 namespace {
 
@@ -116,9 +119,12 @@ std::optional<Surfaces> split_for_grid(const Surface &surface, const BoundingBox
     // Keep the exact shared boundaries from the pre-grouping cell geometry.
     // group_fills() later applies safety offsets and overlap clipping, which can
     // otherwise erase or shorten these boundaries.
-    auto walls = std::make_shared<Polylines>(external_bridge_grid_walls(result));
+    auto walls = std::make_shared<Polylines>(make_external_bridge_grid_walls(result));
+    auto area = std::make_shared<ExPolygon>(surface.expolygon);
     for (Surface &cell : result)
         cell.external_bridge_grid_walls = walls;
+    for (Surface &cell : result)
+        cell.external_bridge_grid_area = area;
 
     return result;
 }
@@ -148,7 +154,7 @@ Surfaces split_external_bridge_surface(const Surface &surface,
     return full_surface(surface);
 }
 
-Polylines external_bridge_grid_walls(const Surfaces &cells)
+static Polylines make_external_bridge_grid_walls(const Surfaces &cells)
 {
     struct Edge {
         Point first;
@@ -285,7 +291,29 @@ Polylines external_bridge_grid_walls(const Surfaces &cells)
         if (first != second)
             result.emplace_back(Polyline(Points { first, second }));
     }
+
     return result;
+}
+
+Polylines external_bridge_grid_walls(const Surfaces &cells)
+{
+    for (const Surface &cell : cells)
+        if (cell.external_bridge_grid_walls)
+            return *cell.external_bridge_grid_walls;
+    return {};
+}
+
+ExPolygons external_bridge_grid_infill_area(
+    const Surface &cell, double wall_overlap, double line_width)
+{
+    wall_overlap = std::clamp(wall_overlap, 0., 1.);
+    if (!cell.external_bridge_grid || !cell.external_bridge_grid_area ||
+        wall_overlap == 0. || line_width <= 0.)
+        return ExPolygons { cell.expolygon };
+
+    return intersection_ex(
+        offset_ex(cell.expolygon, scale_(wall_overlap * line_width)),
+        ExPolygons { *cell.external_bridge_grid_area });
 }
 
 } // namespace Slic3r

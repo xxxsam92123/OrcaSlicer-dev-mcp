@@ -37,6 +37,14 @@ static double total_area(const Surfaces &surfaces)
     return result;
 }
 
+static double total_area(const ExPolygons &expolygons)
+{
+    double result = 0.;
+    for (const ExPolygon &expolygon : expolygons)
+        result += expolygon.area();
+    return result;
+}
+
 TEST_CASE("External bridge grid falls back to the complete surface", "[ExternalBridgeGrid]")
 {
     Surface bridge(stBottomBridge, make_square(20, 20));
@@ -94,6 +102,34 @@ TEST_CASE("External bridge grid configuration allows 32 cells per axis", "[Exter
     REQUIRE(print_config_def.get("external_bridge_grid_cells_y")->min == 1);
     REQUIRE(print_config_def.get("external_bridge_grid_cells_y")->max == 32);
 }
+
+TEST_CASE("External bridge grid infill/wall overlap stays within the original bridge", "[ExternalBridgeGrid]")
+{
+    const DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    REQUIRE_THAT(config.opt_float("external_bridge_grid_infill_wall_overlap"), Catch::Matchers::WithinAbs(0., 1e-6));
+    REQUIRE(print_config_def.get("external_bridge_grid_infill_wall_overlap")->min == 0);
+    REQUIRE(print_config_def.get("external_bridge_grid_infill_wall_overlap")->max == 100);
+
+    Surface bridge(stBottomBridge, make_square(64, 32));
+    bridge.bridge_angle = 0.;
+    const Surfaces cells = split_external_bridge_surface(bridge, { true, 2, 1, 15. });
+    REQUIRE(cells.size() == 2);
+
+    const Polylines shared_walls = external_bridge_grid_walls(cells);
+    REQUIRE(shared_walls.size() == 1);
+
+    const ExPolygons default_infill = external_bridge_grid_infill_area(cells.front(), 0., 0.4);
+    const ExPolygons overlapping_infill = external_bridge_grid_infill_area(cells.front(), 0.5, 0.4);
+    REQUIRE_THAT(total_area(default_infill), Catch::Matchers::WithinAbs(cells.front().area(), 1e-6));
+    REQUIRE(total_area(overlapping_infill) > total_area(default_infill));
+    const BoundingBox original_bounds = get_extents(bridge.expolygon);
+    const BoundingBox infill_bounds = get_extents(overlapping_infill);
+    REQUIRE(infill_bounds.min.x() >= original_bounds.min.x());
+    REQUIRE(infill_bounds.min.y() >= original_bounds.min.y());
+    REQUIRE(infill_bounds.max.x() <= original_bounds.max.x());
+    REQUIRE(infill_bounds.max.y() <= original_bounds.max.y());
+}
+
 
 TEST_CASE("External bridge grid caps the bounded grid", "[ExternalBridgeGrid]")
 {
@@ -239,4 +275,5 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
     // The shared grid boundaries are merged into continuous straight paths.
     // A valid split must therefore emit at least one overhang-perimeter path.
     REQUIRE(enabled.bridge_wall_loops >= 1);
+
 }

@@ -66,7 +66,8 @@ WallToolPathsParams make_paths_params(const int layer_id, const PrintObjectConfi
 }
 
 WallToolPaths::WallToolPaths(const Polygons& outline, const coord_t bead_width_0, const coord_t bead_width_x,
-                             const size_t inset_count, const coord_t wall_0_inset, const coordf_t layer_height, const WallToolPathsParams &params)
+                             const size_t inset_count, const coord_t wall_0_inset, const coordf_t layer_height, const WallToolPathsParams &params,
+                             const Polygons *supported_area, const coord_t overhang_spacing_reduction)
     : outline(outline)
     , bead_width_0(bead_width_0)
     , bead_width_x(bead_width_x)
@@ -80,6 +81,8 @@ WallToolPaths::WallToolPaths(const Polygons& outline, const coord_t bead_width_0
     , wall_transition_filter_deviation(scaled<coord_t>(params.wall_transition_filter_deviation))
     , toolpaths_generated(false)
     , m_params(params)
+    , m_supported_area(supported_area)
+    , m_overhang_spacing_reduction(overhang_spacing_reduction)
 {
 }
 
@@ -548,7 +551,9 @@ const std::vector<VariableWidthLines> &WallToolPaths::generate()
         discretization_step_size,
         transition_filter_dist,
         allowed_filter_deviation,
-        wall_transition_length
+        wall_transition_length,
+        m_supported_area,
+        m_overhang_spacing_reduction
     );
     wall_maker.generateToolpaths(toolpaths);
 

@@ -5312,6 +5312,16 @@ msgstr "内墙"
 msgid "Outer wall"
 msgstr "外墙"
 
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "External bridge infill/overhang wall overlap"
+msgstr "外部桥接走线和悬垂墙边缘的重叠率"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Controls the overlap between external bridge infill and the overhang walls generated along shared external bridge grid boundaries. The percentage is relative to bridge infill line width."
+msgstr "控制外部桥接填充走线与沿外部桥接网格共享边生成的悬垂墙之间的重叠率。百分比相对于桥接填充走线宽度。"
+
 msgid "Overhang wall"
 msgstr "悬垂墙"
 
@@ -15118,6 +15128,17 @@ msgstr "填充/墙 重叠"
 #, no-c-format, no-boost-format
 msgid "This allows the infill area to be enlarged slightly to overlap with walls for better bonding. The percentage value is relative to line width of sparse infill. Set this value to ~10-15% to minimize potential over extrusion and accumulation of material resulting in rough top surfaces."
 msgstr "填充区域略微扩大以与墙壁重叠，以获得更好的粘合。百分比值相对于稀疏填充的线宽。将此值设置为约10-15%，以最小化潜在的过挤出和材料积累，从而导致顶部表面粗糙。"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Overhang wall line overlap"
+msgstr "悬垂墙走线重叠率"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+#, no-c-format, no-boost-format
+msgid "Controls the overlap between adjacent overhang wall lines. The percentage is relative to the overhang wall line width. Set this to 0% to preserve the previous spacing."
+msgstr "控制相邻悬垂墙走线之间的重叠率。百分比相对于悬垂墙走线宽度。将其设为 0% 可保持原有间距。"
 
 msgid "Top/Bottom solid infill/wall overlap"
 msgstr "顶/底部实心填充/墙重叠率"

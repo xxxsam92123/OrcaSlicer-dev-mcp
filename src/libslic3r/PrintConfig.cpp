@@ -1456,6 +1456,17 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(15.));
 
+    def = this->add("external_bridge_grid_infill_wall_overlap", coPercent);
+    def->label = L("External bridge infill/overhang wall overlap");
+    def->category = L("Strength");
+    def->tooltip = L("Controls the overlap between external bridge infill and the overhang walls generated along shared external bridge grid boundaries. The percentage is relative to bridge infill line width.");
+    def->sidetext = "%";
+    def->ratio_over = "bridge_line_width";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(0));
+
     // ORCA: Internal bridge angle override
     def = this->add("internal_bridge_angle", coFloat);
     def->label = L("Internal bridge infill direction");
@@ -4727,7 +4738,19 @@ void PrintConfigDef::init_fff_params()
     def->ratio_over = "inner_wall_line_width";
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionPercent(15));
-    
+
+    def = this->add("overhang_wall_overlap", coPercent);
+    def->label = L("Overhang wall line overlap");
+    def->category = L("Quality");
+    // xgettext:no-c-format, no-boost-format
+    def->tooltip = L("Controls the overlap between adjacent overhang wall lines. The percentage is relative to the overhang wall line width. Set this to 0% to preserve the previous spacing.");
+    def->sidetext = "%";
+    def->ratio_over = "bridge_line_width";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(0));
+
     def = this->add("top_bottom_infill_wall_overlap", coPercent);
     def->label = L("Top/Bottom solid infill/wall overlap");
     def->category = L("Strength");

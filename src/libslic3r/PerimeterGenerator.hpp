@@ -10,6 +10,12 @@
 #include "SurfaceCollection.hpp"
 
 namespace Slic3r {
+
+// Return the center-to-center spacing for overhang walls after applying the
+// configured overlap, while keeping enough spacing for one layer height.
+coord_t overhang_wall_spacing(coord_t nominal_spacing, coord_t overhang_width,
+                              coord_t layer_height, double overlap_percent);
+
 struct FuzzySkinConfig
 {
     FuzzySkinType type;

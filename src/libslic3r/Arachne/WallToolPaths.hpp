@@ -49,7 +49,8 @@ public:
      * \param inset_count The maximum number of parallel extrusion lines that make up the wall
      * \param wall_0_inset How far to inset the outer wall, to make it adhere better to other walls.
      */
-    WallToolPaths(const Polygons& outline, coord_t bead_width_0, coord_t bead_width_x, size_t inset_count, coord_t wall_0_inset, coordf_t layer_height, const WallToolPathsParams &params);
+    WallToolPaths(const Polygons& outline, coord_t bead_width_0, coord_t bead_width_x, size_t inset_count, coord_t wall_0_inset, coordf_t layer_height, const WallToolPathsParams &params,
+                  const Polygons *supported_area = nullptr, coord_t overhang_spacing_reduction = 0);
 
     /*!
      * Generates the Toolpaths
@@ -141,6 +142,8 @@ private:
     std::vector<VariableWidthLines> toolpaths; //<! The generated toolpaths
     Polygons inner_contour;  //<! The inner contour of the generated toolpaths
     const WallToolPathsParams m_params;
+    const Polygons *m_supported_area;
+    coord_t m_overhang_spacing_reduction;
 };
 
 } // namespace Slic3r::Arachne
