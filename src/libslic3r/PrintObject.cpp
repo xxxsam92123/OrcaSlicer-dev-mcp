@@ -1205,6 +1205,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "only_one_wall_first_layer"
             || opt_key == "extra_perimeters_on_overhangs"
             || opt_key == "detect_overhang_wall"
+            || opt_key == "overhang_wall_overlap"
             || opt_key == "initial_layer_line_width"
             || opt_key == "inner_wall_line_width"
             || opt_key == "infill_wall_overlap"
@@ -1387,6 +1388,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "external_bridge_grid_cells_x"
             || opt_key == "external_bridge_grid_cells_y"
             || opt_key == "external_bridge_grid_angle_step"
+            || opt_key == "external_bridge_grid_infill_wall_overlap"
             || opt_key == "internal_bridge_angle" // ORCA: Internal bridge angle override
             || opt_key == "relative_bridge_angle" // ORCA: Relative bridge angle
             //BBS

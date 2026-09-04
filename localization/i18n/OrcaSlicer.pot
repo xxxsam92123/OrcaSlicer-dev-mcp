@@ -12078,6 +12078,14 @@ msgstr ""
 msgid "Alternating angle offset applied to adjacent external bridge cells."
 msgstr ""
 
+#: src/libslic3r/PrintConfig.cpp
+msgid "External bridge infill/overhang wall overlap"
+msgstr ""
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Controls the overlap between external bridge infill and the overhang walls generated along shared external bridge grid boundaries. The percentage is relative to bridge infill line width."
+msgstr ""
+
 #, no-c-format, no-boost-format
 msgid ""
 "External Bridging angle override.\n"
@@ -14243,6 +14251,15 @@ msgstr ""
 
 #, no-c-format, no-boost-format
 msgid "This allows the infill area to be enlarged slightly to overlap with walls for better bonding. The percentage value is relative to line width of sparse infill. Set this value to ~10-15% to minimize potential over extrusion and accumulation of material resulting in rough top surfaces."
+msgstr ""
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Overhang wall line overlap"
+msgstr ""
+
+#: src/libslic3r/PrintConfig.cpp
+#, no-c-format, no-boost-format
+msgid "Controls the overlap between adjacent overhang wall lines. The percentage is relative to the overhang wall line width. Set this to 0% to preserve the previous spacing."
 msgstr ""
 
 msgid "Top/Bottom solid infill/wall overlap"
