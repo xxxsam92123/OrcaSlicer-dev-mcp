@@ -177,8 +177,8 @@ static Polylines make_external_bridge_grid_walls(const Surfaces &cells)
     constexpr coord_t    MIN_SHARED_LENGTH = 2;
 
     const auto length = [](const Point &first, const Point &second) {
-        const long double dx = long double(second.x()) - long double(first.x());
-        const long double dy = long double(second.y()) - long double(first.y());
+        const long double dx = static_cast<long double>(second.x()) - static_cast<long double>(first.x());
+        const long double dy = static_cast<long double>(second.y()) - static_cast<long double>(first.y());
         return std::hypotl(dx, dy);
     };
     const auto cross = [](long double ax, long double ay, long double bx, long double by) {
@@ -186,10 +186,10 @@ static Polylines make_external_bridge_grid_walls(const Surfaces &cells)
     };
     const auto same_line = [&](const Point &first, const Point &second,
                                const Point &candidate_first, const Point &candidate_second) {
-        const long double dx = long double(second.x()) - long double(first.x());
-        const long double dy = long double(second.y()) - long double(first.y());
-        const long double candidate_dx = long double(candidate_second.x()) - long double(candidate_first.x());
-        const long double candidate_dy = long double(candidate_second.y()) - long double(candidate_first.y());
+        const long double dx = static_cast<long double>(second.x()) - static_cast<long double>(first.x());
+        const long double dy = static_cast<long double>(second.y()) - static_cast<long double>(first.y());
+        const long double candidate_dx = static_cast<long double>(candidate_second.x()) - static_cast<long double>(candidate_first.x());
+        const long double candidate_dy = static_cast<long double>(candidate_second.y()) - static_cast<long double>(candidate_first.y());
         const long double first_length = std::hypotl(dx, dy);
         const long double candidate_length = std::hypotl(candidate_dx, candidate_dy);
         if (first_length == 0. || candidate_length == 0. ||
@@ -197,27 +197,27 @@ static Polylines make_external_bridge_grid_walls(const Surfaces &cells)
                 PARALLEL_EPSILON * first_length * candidate_length)
             return false;
         return std::abs(cross(dx, dy,
-                              long double(candidate_first.x()) - long double(first.x()),
-                              long double(candidate_first.y()) - long double(first.y()))) /
-                   first_length <= long double(ENDPOINT_TOLERANCE) &&
+                              static_cast<long double>(candidate_first.x()) - static_cast<long double>(first.x()),
+                              static_cast<long double>(candidate_first.y()) - static_cast<long double>(first.y()))) /
+                   first_length <= static_cast<long double>(ENDPOINT_TOLERANCE) &&
                std::abs(cross(dx, dy,
-                              long double(candidate_second.x()) - long double(first.x()),
-                              long double(candidate_second.y()) - long double(first.y()))) /
-                   first_length <= long double(ENDPOINT_TOLERANCE);
+                              static_cast<long double>(candidate_second.x()) - static_cast<long double>(first.x()),
+                              static_cast<long double>(candidate_second.y()) - static_cast<long double>(first.y()))) /
+                   first_length <= static_cast<long double>(ENDPOINT_TOLERANCE);
     };
     const auto projection = [](const Point &origin, const Point &direction, const Point &point) {
-        const long double dx = long double(direction.x()) - long double(origin.x());
-        const long double dy = long double(direction.y()) - long double(origin.y());
+        const long double dx = static_cast<long double>(direction.x()) - static_cast<long double>(origin.x());
+        const long double dy = static_cast<long double>(direction.y()) - static_cast<long double>(origin.y());
         const long double length = std::hypotl(dx, dy);
-        return ((long double(point.x()) - long double(origin.x())) * dx +
-                (long double(point.y()) - long double(origin.y())) * dy) / length;
+        return ((static_cast<long double>(point.x()) - static_cast<long double>(origin.x())) * dx +
+                (static_cast<long double>(point.y()) - static_cast<long double>(origin.y())) * dy) / length;
     };
     const auto point_at = [](const Point &first, const Point &second, long double distance) {
-        const long double dx = long double(second.x()) - long double(first.x());
-        const long double dy = long double(second.y()) - long double(first.y());
+        const long double dx = static_cast<long double>(second.x()) - static_cast<long double>(first.x());
+        const long double dy = static_cast<long double>(second.y()) - static_cast<long double>(first.y());
         const long double segment_length = std::hypotl(dx, dy);
-        return Point(coord_t(std::llround(long double(first.x()) + distance * dx / segment_length)),
-                     coord_t(std::llround(long double(first.y()) + distance * dy / segment_length)));
+        return Point(coord_t(std::llround(static_cast<long double>(first.x()) + distance * dx / segment_length)),
+                     coord_t(std::llround(static_cast<long double>(first.y()) + distance * dy / segment_length)));
     };
 
     // Compare every pair of edges from different cells. Clipping can split one
@@ -227,7 +227,7 @@ static Polylines make_external_bridge_grid_walls(const Surfaces &cells)
     for (size_t lhs = 0; lhs < edges.size(); ++lhs) {
         const Edge &first = edges[lhs];
         const long double first_length = length(first.first, first.second);
-        if (first_length < long double(MIN_SHARED_LENGTH))
+        if (first_length < static_cast<long double>(MIN_SHARED_LENGTH))
             continue;
         for (size_t rhs = lhs + 1; rhs < edges.size(); ++rhs) {
             const Edge &second = edges[rhs];
@@ -240,7 +240,7 @@ static Polylines make_external_bridge_grid_walls(const Surfaces &cells)
             const long double second_end = projection(first.first, first.second, second.second);
             const long double overlap_begin = std::max(first_begin, std::min(second_begin, second_end));
             const long double overlap_end = std::min(first_end, std::max(second_begin, second_end));
-            if (overlap_end - overlap_begin < long double(MIN_SHARED_LENGTH))
+            if (overlap_end - overlap_begin < static_cast<long double>(MIN_SHARED_LENGTH))
                 continue;
             shared_segments.push_back({ point_at(first.first, first.second, overlap_begin),
                                         point_at(first.first, first.second, overlap_end),
@@ -260,7 +260,7 @@ static Polylines make_external_bridge_grid_walls(const Surfaces &cells)
     std::vector<MergedSegment> merged;
     for (const Edge &segment : shared_segments) {
         const long double segment_length = length(segment.first, segment.second);
-        if (segment_length < long double(MIN_SHARED_LENGTH))
+        if (segment_length < static_cast<long double>(MIN_SHARED_LENGTH))
             continue;
 
         bool merged_segment = false;
@@ -271,8 +271,8 @@ static Polylines make_external_bridge_grid_walls(const Surfaces &cells)
             const long double candidate_end = projection(existing.origin, existing.direction, segment.second);
             const long double begin = std::min(candidate_begin, candidate_end);
             const long double end = std::max(candidate_begin, candidate_end);
-            if (begin > existing.end + long double(ENDPOINT_TOLERANCE) ||
-                end < existing.begin - long double(ENDPOINT_TOLERANCE))
+            if (begin > existing.end + static_cast<long double>(ENDPOINT_TOLERANCE) ||
+                end < existing.begin - static_cast<long double>(ENDPOINT_TOLERANCE))
                 continue;
             existing.begin = std::min(existing.begin, begin);
             existing.end = std::max(existing.end, end);
