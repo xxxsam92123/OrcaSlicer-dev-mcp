@@ -269,7 +269,10 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
     REQUIRE(fallback.bridge_wall_loops == 0);
 
     const auto enabled = collect_entities(true, 15.);
-    REQUIRE(enabled.cell_count == 4);
+    // Only the cells with an isolated bridge-wall boundary are emitted. The
+    // overlap-boundary isolation keeps the two cells adjacent to the hole;
+    // the outer two cells are not valid bridge-wall candidates.
+    REQUIRE(enabled.cell_count == 2);
     REQUIRE(enabled.surface_angles.size() >= 2);
     REQUIRE(enabled.path_angles.size() >= 2);
     REQUIRE(enabled.first_wall_entity != size_t(-1));
