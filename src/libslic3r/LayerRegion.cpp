@@ -508,9 +508,12 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
     const float overlap_scaled = float(scale_(overlap));
     const float wall_radius = float(scale_(0.5 * wall_flow.width())) + overlap_scaled;
     for (Surface &bridge : bridges) {
-        Polylines boundaries = perimeter_boundaries;
-        if (bridge.external_bridge_grid_walls)
-            append(boundaries, *bridge.external_bridge_grid_walls);
+        Polylines boundaries;
+        const bool is_grid_bridge = bool(bridge.external_bridge_grid_walls);
+        if (is_grid_bridge)
+            boundaries = *bridge.external_bridge_grid_walls;
+        else
+            boundaries = perimeter_boundaries;
         if (boundaries.empty())
             continue;
 
@@ -522,7 +525,7 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
         // Grid wall polylines are already emitted as the wall center line.  Do
         // not add the requested overlap to their wall band a second time: the
         // bridge-side growth above is the complete seam overlap.
-        const float boundary_radius = bridge.external_bridge_grid_walls ?
+        const float boundary_radius = is_grid_bridge ?
             float(scale_(0.5 * wall_flow.width())) : wall_radius;
         const ExPolygons seam = intersection_ex(grown, offset(boundaries, boundary_radius));
         if (seam.empty())
