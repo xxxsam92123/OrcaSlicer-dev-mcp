@@ -1,4 +1,5 @@
 #include "Layer.hpp"
+
 #include "BridgeDetector.hpp"
 #include "ClipperUtils.hpp"
 #include "Geometry.hpp"
@@ -75,15 +76,23 @@ void LayerRegion::slices_to_fill_surfaces_clipped()
     this->fill_surfaces.surfaces.clear();
     for (size_t surface_type = 0; surface_type < size_t(stCount); ++ surface_type) {
         const SurfacesPtr &this_surfaces = by_surface[surface_type];
-        if (! this_surfaces.empty())
-            this->fill_surfaces.append(intersection_ex(this_surfaces, this->fill_expolygons), SurfaceType(surface_type));
+        if (! this_surfaces.empty()) {
+            // Select the bridge boundary before clipping away the original slice.
+            const ExPolygons &boundary = surface_type == size_t(stBottomBridge) ?
+                this->external_bridge_fill_expolygons : this->fill_expolygons;
+            this->fill_surfaces.append(intersection_ex(this_surfaces, boundary), SurfaceType(surface_type));
+        }
     }
 }
 
-void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRegionPtrs &compatible_regions, SurfaceCollection* fill_surfaces, ExPolygons* fill_no_overlap)
+void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRegionPtrs &compatible_regions, SurfaceCollection* fill_surfaces, ExPolygons* fill_no_overlap, ExPolygons* fill_internal_bridge, ExPolygons* external_bridge_fill, Polylines* external_bridge_wall_boundary)
 {
     this->perimeters.clear();
     this->thin_fills.clear();
+    fill_no_overlap->clear();
+    fill_internal_bridge->clear();
+    external_bridge_fill->clear();
+    external_bridge_wall_boundary->clear();
 
     const PrintConfig       &print_config  = this->layer()->object()->print()->config();
     const PrintRegionConfig &region_config = this->region().config();
@@ -118,7 +127,10 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
         &this->thin_fills,
         fill_surfaces,
         //BBS
-        fill_no_overlap
+        fill_no_overlap,
+        fill_internal_bridge,
+        external_bridge_fill,
+        external_bridge_wall_boundary
     );
     
     if (this->layer()->lower_layer != nullptr)
@@ -484,6 +496,40 @@ Surfaces expand_merge_surfaces(
     return out;
 }
 
+static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polylines &perimeter_boundaries,
+                                                  const PrintRegionConfig &region_config, const Flow &bridge_flow,
+                                                  const Flow &wall_flow)
+{
+    const double overlap = region_config.external_bridge_infill_wall_overlap.get_abs_value(bridge_flow.width());
+    if (overlap <= 0. || (perimeter_boundaries.empty() && std::none_of(bridges.begin(), bridges.end(),
+        [](const Surface &surface) { return bool(surface.external_bridge_grid_walls); })))
+        return;
+
+    const float overlap_scaled = float(scale_(overlap));
+    const float wall_radius = float(scale_(0.5 * wall_flow.width())) + overlap_scaled;
+    for (Surface &bridge : bridges) {
+        Polylines boundaries = perimeter_boundaries;
+        if (bridge.external_bridge_grid_walls)
+            append(boundaries, *bridge.external_bridge_grid_walls);
+        if (boundaries.empty())
+            continue;
+
+        // Expand only the part of the bridge surface that is adjacent to an
+        // overhang-wall center line. The fill generator therefore receives the
+        // seam overlap as its input boundary; no generated bridge path is
+        // clipped after the fact.
+        const ExPolygons grown = offset_ex(ExPolygons{ bridge.expolygon }, overlap_scaled);
+        const ExPolygons seam = intersection_ex(grown, offset(boundaries, wall_radius));
+        if (seam.empty())
+            continue;
+        ExPolygons merged = union_ex(ExPolygons{ bridge.expolygon });
+        append(merged, seam);
+        merged = union_ex(merged);
+        if (merged.size() == 1)
+            bridge.expolygon = std::move(merged.front());
+    }
+}
+
 void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Polygons *lower_layer_covered)
 {
     using namespace Slic3r::Algorithm;
@@ -521,8 +567,8 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     // Expand the top / bottom / bridge surfaces into the shell thickness solid infills.
     double     layer_thickness;
     ExPolygons shells = union_ex(fill_surfaces_extract_expolygons(this->fill_surfaces.surfaces, { stInternalSolid }, layer_thickness));
-    ExPolygons sparse = union_ex(fill_surfaces_extract_expolygons(this->fill_surfaces.surfaces, {stInternal}, layer_thickness));
-    ExPolygons top_expolygons = union_ex(fill_surfaces_extract_expolygons(this->fill_surfaces.surfaces, {stTop}, layer_thickness));
+        ExPolygons sparse = union_ex(fill_surfaces_extract_expolygons(this->fill_surfaces.surfaces, {stInternal}, layer_thickness));
+        ExPolygons top_expolygons = union_ex(fill_surfaces_extract_expolygons(this->fill_surfaces.surfaces, {stTop}, layer_thickness));
     const auto expansion_params_into_sparse_infill = RegionExpansionParameters::build(expansion_min, expansion_step, max_nr_expansion_steps);
     const auto expansion_params_into_solid_infill  = RegionExpansionParameters::build(expansion_bottom_bridge, expansion_step, max_nr_expansion_steps);
 
@@ -535,7 +581,6 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     SurfaceCollection bridges;
     {
         BOOST_LOG_TRIVIAL(trace) << "Processing external surface, detecting bridges. layer" << this->layer()->print_z;
-        // ORCA: Relative/Align Bridge Angle
         const auto  &region_config    = this->region().config();
         const double custom_angle_deg = region_config.bridge_angle.value;
         const bool   relative_angle   = region_config.relative_bridge_angle.value;
@@ -547,15 +592,27 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
             align_offset_rad = std::atan2((double)m(1, 0), (double)m(0, 0));
         }
 
+        SurfaceCollection bridge_input;
+        if (region_config.bottom_shell_layers.value > 0)
+            for (const Surface &surface : this->slices.surfaces)
+                if (surface.surface_type == stBottomBridge)
+                    bridge_input.append(intersection_ex(ExPolygons{surface.expolygon}, this->external_bridge_fill_expolygons), surface);
+        std::vector<ExpansionZone> bridge_expansion_zones = expansion_zones;
+        const ExPolygons bridge_seeds = to_expolygons(bridge_input.surfaces);
+        for (ExpansionZone &zone : bridge_expansion_zones)
+            zone.expolygons = diff_ex(intersection_ex(zone.expolygons, this->external_bridge_fill_expolygons), bridge_seeds);
+
         bridges.surfaces = (custom_angle_deg > 0.0 && !relative_angle) ?
-            expand_merge_surfaces(this->fill_surfaces.surfaces, stBottomBridge, expansion_zones, closing_radius, custom_angle_rad + align_offset_rad) :
-            expand_bridges_detect_orientations(this->fill_surfaces.surfaces, expansion_zones, closing_radius);
+            expand_merge_surfaces(bridge_input.surfaces, stBottomBridge, bridge_expansion_zones, closing_radius, custom_angle_rad + align_offset_rad) :
+            expand_bridges_detect_orientations(bridge_input.surfaces, bridge_expansion_zones, closing_radius);
+
         if (custom_angle_deg > 0.0 && relative_angle) {
             for (Surface &bridge_surface : bridges.surfaces) {
                 if (bridge_surface.bridge_angle >= 0)
                     bridge_surface.bridge_angle += custom_angle_rad;
             }
         }
+
         if (region_config.external_bridge_grid_enable) {
             Surfaces split_bridges;
             split_bridges.reserve(bridges.surfaces.size());
@@ -568,6 +625,16 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                 surfaces_append(split_bridges, split_external_bridge_surface(bridge_surface, grid_settings));
             bridges.surfaces = std::move(split_bridges);
         }
+        apply_external_bridge_wall_overlap(
+            bridges.surfaces,
+            this->external_bridge_wall_boundary,
+            region_config,
+            this->bridging_flow(frInfill, this->layer()->object()->config().thick_bridges),
+            this->bridging_flow(frPerimeter, this->layer()->object()->config().thick_bridges));
+        // Preserve the expansion algorithm's ownership transfer: areas assigned
+        // to bridges must not remain in the ordinary top/solid/sparse zones.
+        for (ExpansionZone &zone : expansion_zones)
+            zone.expolygons = diff_ex(zone.expolygons, to_expolygons(bridges.surfaces));
         BOOST_LOG_TRIVIAL(trace) << "Processing external surface, detecting bridges - done";
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
         {

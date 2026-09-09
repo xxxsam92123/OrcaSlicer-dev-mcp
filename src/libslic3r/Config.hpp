@@ -11,6 +11,7 @@
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -267,6 +268,8 @@ struct ConfigSubstitutionContext
     ForwardCompatibilitySubstitutionRule 	rule;
     ConfigSubstitutions					    substitutions;
     std::vector<std::string>                unrecogized_keys;
+    // Explicitly supplied replacement keys take precedence over legacy aliases.
+    std::set<std::string>                   explicitly_set_keys;
 };
 
 // A generic value of a configuration option.

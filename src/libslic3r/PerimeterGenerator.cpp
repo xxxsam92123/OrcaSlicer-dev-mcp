@@ -64,6 +64,47 @@ public:
 
 using PerimeterGeneratorLoops = std::vector<PerimeterGeneratorLoop>;
 
+static bool has_overhang_path(const ExtrusionLoop &loop)
+{
+    return std::any_of(loop.paths.begin(), loop.paths.end(), [](const ExtrusionPath &path) {
+        return path.role() == erOverhangPerimeter;
+    });
+}
+
+static int innermost_overhang_inset(const ExtrusionEntityCollection &collection)
+{
+    int result = -1;
+    for (const ExtrusionEntity *entity : collection.entities) {
+        if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(entity)) {
+            if (has_overhang_path(*loop))
+                result = std::max(result, loop->inset_idx);
+        } else if (const auto *nested = dynamic_cast<const ExtrusionEntityCollection *>(entity)) {
+            result = std::max(result, innermost_overhang_inset(*nested));
+        }
+    }
+    return result;
+}
+
+static void append_innermost_overhang_boundaries(const ExtrusionEntityCollection &collection, int inset_idx,
+                                                  Polylines &boundaries)
+{
+    for (const ExtrusionEntity *entity : collection.entities) {
+        if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(entity)) {
+            if (loop->inset_idx == inset_idx && has_overhang_path(*loop))
+                for (const ExtrusionPath &path : loop->paths)
+                    if (path.role() == erOverhangPerimeter && path.polyline.points.size() >= 2)
+                        boundaries.emplace_back(path.polyline.to_polyline());
+        } else if (const auto *nested = dynamic_cast<const ExtrusionEntityCollection *>(entity)) {
+            append_innermost_overhang_boundaries(*nested, inset_idx, boundaries);
+        } else if (const auto *path = dynamic_cast<const ExtrusionPath *>(entity)) {
+            // Arachne may emit open perimeter fragments in a multi-path
+            // collection without an ExtrusionLoop/inset index.
+            if (inset_idx < 0 && path->role() == erOverhangPerimeter && path->polyline.points.size() >= 2)
+                boundaries.emplace_back(path->polyline.to_polyline());
+        }
+    }
+}
+
 static bool point_is_supported(const Polygons &supported_area, const Point &point)
 {
     return std::any_of(supported_area.begin(), supported_area.end(), [&point](const Polygon &polygon) {
@@ -1394,6 +1435,7 @@ static void reorient_perimeters(ExtrusionEntityCollection &entities, bool steep_
 
 void PerimeterGenerator::process_classic()
 {
+    this->external_bridge_wall_boundary->clear();
     group_region_by_fuzzify(*this);
 
     // other perimeters
@@ -1962,6 +2004,7 @@ void PerimeterGenerator::process_classic()
                 ext_perimeter_spacing / 2 :
                 // two or more loops?
                 perimeter_spacing / 2;
+        const coord_t base_inset = inset;
         
         // only apply infill overlap if we actually have one perimeter
         coord_t infill_peri_overlap = 0;
@@ -2005,24 +2048,49 @@ void PerimeterGenerator::process_classic()
 
         // BBS: get the no-overlap infill expolygons
         {
-            ExPolygons polyWithoutOverlap;
-            if (min_perimeter_infill_spacing / 2 > infill_peri_overlap)
-                polyWithoutOverlap = offset2_ex(
-                    not_filled_exp,
-                    float(-inset - min_perimeter_infill_spacing / 2.),
-                    float(min_perimeter_infill_spacing / 2 - infill_peri_overlap));
-            else
-                polyWithoutOverlap = offset_ex(
-                    not_filled_exp,
-                    double(-inset - infill_peri_overlap));
+            ExPolygons polyWithoutOverlap = offset2_ex(
+                not_filled_exp,
+                float(-base_inset - min_perimeter_infill_spacing / 2.),
+                float(+min_perimeter_infill_spacing / 2.));
             if (!top_fills.empty())
                 polyWithoutOverlap = union_ex(polyWithoutOverlap, top_infill_exp);
             if (!one_wall_top_reclaimed.empty())
                 polyWithoutOverlap = union_ex(polyWithoutOverlap, one_wall_top_reclaimed);
             this->fill_no_overlap->insert(this->fill_no_overlap->end(), polyWithoutOverlap.begin(), polyWithoutOverlap.end());
+            // Keep external bridge detection independent of ordinary infill overlap.
+            ExPolygons external_bridge_boundary = offset2_ex(
+                not_filled_exp,
+                float(-base_inset - min_perimeter_infill_spacing / 2.),
+                float(+min_perimeter_infill_spacing / 2.));
+            this->external_bridge_fill->insert(this->external_bridge_fill->end(), external_bridge_boundary.begin(), external_bridge_boundary.end());
+
+
+            // Generate the internal-bridge boundary with the same wall inset
+            // and spacing algorithm. At 0%, reuse the exact clean result.
+            const coord_t bridge_infill_peri_overlap = base_inset > 0 ? coord_t(scale_(
+                this->config->internal_bridge_infill_wall_overlap.get_abs_value(
+                    unscale<double>(base_inset + solid_infill_spacing / 2)))) : 0;
+            const coord_t bridge_inset = base_inset - bridge_infill_peri_overlap;
+            ExPolygons internal_bridge;
+            if (bridge_infill_peri_overlap == 0) {
+                internal_bridge = polyWithoutOverlap;
+            } else {
+                internal_bridge = offset2_ex(
+                    not_filled_exp,
+                    float(-bridge_inset - min_perimeter_infill_spacing / 2.),
+                    float(min_perimeter_infill_spacing / 2.));
+            }
+            if (!top_fills.empty())
+                internal_bridge = union_ex(internal_bridge, top_infill_exp);
+            if (!one_wall_top_reclaimed.empty())
+                internal_bridge = union_ex(internal_bridge, one_wall_top_reclaimed);
+            this->fill_internal_bridge->insert(this->fill_internal_bridge->end(), internal_bridge.begin(), internal_bridge.end());
         }
 
     } // for each island
+
+    const int innermost_inset = innermost_overhang_inset(*this->loops);
+    append_innermost_overhang_boundaries(*this->loops, innermost_inset, *this->external_bridge_wall_boundary);
 }
 
 //BBS:
@@ -2431,6 +2499,7 @@ void bringContoursToFront(std::vector<PerimeterGeneratorArachneExtrusion>& order
 // "A framework for adaptive width control of dense contour-parallel toolpaths in fused deposition modeling"
 void PerimeterGenerator::process_arachne()
 {
+    this->external_bridge_wall_boundary->clear();
     group_region_by_fuzzify(*this);
 
     // other perimeters
@@ -2889,11 +2958,27 @@ void PerimeterGenerator::process_arachne()
                 not_filled_exp,
                 float(-min_perimeter_infill_spacing / 2.),
                 float(+min_perimeter_infill_spacing / 2.));
+            const coord_t base_inset = (loop_number < 0) ? 0 :
+                (loop_number == 0 ? ext_perimeter_spacing : perimeter_spacing);
+            this->external_bridge_fill->insert(this->external_bridge_fill->end(), polyWithoutOverlap.begin(), polyWithoutOverlap.end());
             if (!top_expolygons.empty())
                 polyWithoutOverlap = union_ex(polyWithoutOverlap, top_expolygons);
             this->fill_no_overlap->insert(this->fill_no_overlap->end(), polyWithoutOverlap.begin(), polyWithoutOverlap.end());
+
+            const double internal_bridge_overlap = this->config->internal_bridge_infill_wall_overlap.get_abs_value(
+                unscale<double>(base_inset));
+            ExPolygons internal_bridge = (internal_bridge_overlap <= 0.) ? polyWithoutOverlap : offset2_ex(
+                not_filled_exp,
+                float(-min_perimeter_infill_spacing / 2.),
+                float(scale_(internal_bridge_overlap) + min_perimeter_infill_spacing / 2.));
+            if (!top_expolygons.empty())
+                internal_bridge = union_ex(internal_bridge, top_expolygons);
+            this->fill_internal_bridge->insert(this->fill_internal_bridge->end(), internal_bridge.begin(), internal_bridge.end());
         }
     }
+
+    const int innermost_inset = innermost_overhang_inset(*this->loops);
+    append_innermost_overhang_boundaries(*this->loops, innermost_inset, *this->external_bridge_wall_boundary);
 }
 
 bool PerimeterGeneratorLoop::is_internal_contour() const

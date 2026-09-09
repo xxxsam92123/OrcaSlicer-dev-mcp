@@ -1456,16 +1456,27 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(15.));
 
-    def = this->add("external_bridge_grid_infill_wall_overlap", coPercent);
+    def = this->add("external_bridge_infill_wall_overlap", coPercent);
     def->label = L("External bridge infill/overhang wall overlap");
     def->category = L("Strength");
-    def->tooltip = L("Controls the overlap between external bridge infill and the overhang walls generated along shared external bridge grid boundaries. The percentage is relative to bridge infill line width.");
+    def->tooltip = L("Controls the overlap between the innermost overhang wall line and external bridge infill. It does not change the overlap between adjacent overhang wall lines.");
     def->sidetext = "%";
     def->ratio_over = "bridge_line_width";
     def->min = 0;
     def->max = 100;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionPercent(0));
+
+    def = this->add("internal_bridge_infill_wall_overlap", coPercent);
+    def->label = L("Internal bridge infill/inner wall overlap");
+    def->category = L("Strength");
+    def->tooltip = L("Controls the overlap between internal bridge infill and inner walls or internal bridge boundaries. It follows the same wall inset and infill spacing algorithm as ordinary infill/wall overlap and does not affect external bridges or ordinary infill.");
+    def->sidetext = "%";
+    def->ratio_over = "inner_wall_line_width";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(15));
 
     // ORCA: Internal bridge angle override
     def = this->add("internal_bridge_angle", coFloat);
@@ -9049,7 +9060,11 @@ void PrintConfigDef::init_sla_params()
 void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &value)
 {
     //BBS: handle legacy options
-    if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
+    if (opt_key == "external_bridge_grid_infill_wall_overlap") {
+        // Legacy grid-specific name; migrate it to the single external
+        // bridge infill/overhang-wall overlap setting.
+        opt_key = "external_bridge_infill_wall_overlap";
+    } else if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
         value = "Supertack Plate";
     } else if (opt_key == "enable_wipe_tower") {
         opt_key = "enable_prime_tower";

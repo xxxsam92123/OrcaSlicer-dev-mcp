@@ -100,6 +100,9 @@ public:
     SurfaceCollection           *fill_surfaces;
     //BBS
     ExPolygons                  *fill_no_overlap;
+    ExPolygons                  *fill_internal_bridge;
+    ExPolygons                  *external_bridge_fill;
+    Polylines                   *external_bridge_wall_boundary;
 
     //BBS
     Flow                        smaller_ext_perimeter_flow;
@@ -132,7 +135,10 @@ public:
         // Infills without the gap fills
         SurfaceCollection*          fill_surfaces,
         //BBS
-        ExPolygons*                 fill_no_overlap)
+        ExPolygons*                 fill_no_overlap,
+        ExPolygons*                 fill_internal_bridge,
+        ExPolygons*                 external_bridge_fill,
+        Polylines*                  external_bridge_wall_boundary)
         : slices(slices), compatible_regions(compatible_regions), upper_slices(nullptr), lower_slices(nullptr), layer_height(layer_height),
             slice_z(slice_z), layer_id(-1), perimeter_flow(flow), ext_perimeter_flow(flow),
             overhang_flow(flow), solid_infill_flow(flow),
@@ -140,7 +146,7 @@ public:
             m_spiral_vase(spiral_mode),
             m_scaled_resolution(scaled<double>(print_config->resolution.value > EPSILON ? print_config->resolution.value : EPSILON)),
             m_model_rotation_rad(model_rotation_rad),
-            loops(loops), gap_fill(gap_fill), fill_surfaces(fill_surfaces), fill_no_overlap(fill_no_overlap),
+            loops(loops), gap_fill(gap_fill), fill_surfaces(fill_surfaces), fill_no_overlap(fill_no_overlap), fill_internal_bridge(fill_internal_bridge), external_bridge_fill(external_bridge_fill), external_bridge_wall_boundary(external_bridge_wall_boundary),
             m_ext_mm3_per_mm(-1), m_mm3_per_mm(-1), m_mm3_per_mm_overhang(-1), m_ext_mm3_per_mm_smaller_width(-1)
         {}
 

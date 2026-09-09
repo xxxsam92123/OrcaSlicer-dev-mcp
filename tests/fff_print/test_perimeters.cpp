@@ -2,6 +2,7 @@
 
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Print.hpp"
 
@@ -319,6 +320,7 @@ TEST_CASE("Overhang wall overlap changes mixed-surface wall geometry", "[Overhan
     const OverhangMeasure classic_zero = measure("classic", "0%");
     const OverhangMeasure classic_zero_repeat = measure("classic", "0%");
     const OverhangMeasure classic_full = measure("classic", "100%");
+
     REQUIRE(classic_zero.count > 0);
     REQUIRE(classic_full.count > 0);
     CHECK(classic_zero.coordinate_sum == classic_zero_repeat.coordinate_sum);
@@ -326,13 +328,105 @@ TEST_CASE("Overhang wall overlap changes mixed-surface wall geometry", "[Overhan
     CHECK(std::abs(classic_full.perimeter_coordinate_sum - classic_zero.perimeter_coordinate_sum) <= scaled<int64_t>(0.001));
     CHECK(classic_full.bridge_coordinate_sum == classic_zero.bridge_coordinate_sum);
 
+
     const OverhangMeasure arachne_zero = measure("arachne", "0%");
     const OverhangMeasure arachne_zero_repeat = measure("arachne", "0%");
     const OverhangMeasure arachne_full = measure("arachne", "100%");
+
     REQUIRE(arachne_zero.count > 0);
     REQUIRE(arachne_full.count > 0);
     CHECK(arachne_zero.coordinate_sum == arachne_zero_repeat.coordinate_sum);
     CHECK(arachne_full.coordinate_sum != arachne_zero.coordinate_sum);
     CHECK(std::abs(arachne_full.perimeter_coordinate_sum - arachne_zero.perimeter_coordinate_sum) <= scaled<int64_t>(0.001));
     CHECK(arachne_full.bridge_coordinate_sum == arachne_zero.bridge_coordinate_sum);
+
+}
+
+TEST_CASE("External bridge overlap changes only the bridge-to-overhang-wall seam", "[ExternalBridgeOverlap][Regression]")
+{
+    struct Measurement {
+        size_t wall_count = 0;
+        size_t perimeter_boundary_count = 0;
+        double wall_length = 0.;
+        int64_t wall_coordinate_sum = 0;
+        double bridge_wall_seam_area = 0.;
+    };
+
+    const auto mixed_overhang_bridge = [] {
+        TriangleMesh base = make_cube(20., 20., 1.);
+        TriangleMesh top = make_cube(30., 20., 2.);
+        top.translate(-5.f, 0.f, 1.f);
+        base.merge(top);
+        return base;
+    };
+    const auto measure = [&mixed_overhang_bridge](const char *wall_generator, const char *overlap) {
+        DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+        config.set_deserialize_strict({
+            { "wall_generator", wall_generator },
+            { "wall_loops", 3 },
+            { "detect_overhang_wall", true },
+            { "enable_overhang_speed", true },
+            { "enable_support", false },
+            { "external_bridge_infill_wall_overlap", overlap },
+            { "overhang_wall_overlap", "0%" },
+        });
+
+        Print print;
+        Test::init_and_process_print({ mixed_overhang_bridge() }, print, config);
+
+        Polylines wall_boundaries;
+        Measurement result;
+        const auto account = [&](const ExtrusionPath &path) {
+            if (path.role() != erOverhangPerimeter)
+                return;
+            ++result.wall_count;
+            result.wall_length += path.length();
+            for (size_t i = 1; i < path.polyline.points.size(); ++i) {
+                const Point a = path.polyline.points[i - 1].to_point();
+                const Point b = path.polyline.points[i].to_point();
+                wall_boundaries.emplace_back(Polyline{ Points{ a, b } });
+            }
+            for (const Point3 &point : path.polyline.points)
+                result.wall_coordinate_sum += point.x() + point.y();
+        };
+        const auto collect_walls = [&](const ExtrusionEntityCollection &collection) {
+            for (const ExtrusionEntity *entity : collection.flatten().entities)
+                if (const auto *path = dynamic_cast<const ExtrusionPath *>(entity))
+                    account(*path);
+                else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(entity))
+                    for (const ExtrusionPath &path : multi->paths)
+                        account(path);
+                else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(entity))
+                    for (const ExtrusionPath &path : loop->paths)
+                        account(path);
+        };
+        for (const Layer *layer : print.objects().front()->layers())
+            for (const LayerRegion *region : layer->regions()) {
+                result.perimeter_boundary_count += region->external_bridge_wall_boundary.size();
+                collect_walls(region->perimeters);
+                collect_walls(region->fills);
+            }
+
+        if (result.wall_count == 0 || wall_boundaries.empty())
+            return result;
+        const Polygons seam_region = offset(wall_boundaries, scaled<float>(0.2));
+        for (const Layer *layer : print.objects().front()->layers())
+            for (const LayerRegion *region : layer->regions())
+                for (const Surface &surface : region->fill_surfaces.surfaces)
+                    if (surface.surface_type == stBottomBridge)
+                        result.bridge_wall_seam_area += area(intersection_ex(ExPolygons{ surface.expolygon }, seam_region));
+        return result;
+    };
+
+    for (const char *wall_generator : { "classic", "arachne" }) {
+        CAPTURE(wall_generator);
+        const Measurement no_overlap = measure(wall_generator, "0%");
+        const Measurement full_overlap = measure(wall_generator, "100%");
+        REQUIRE(no_overlap.wall_count > 0);
+        REQUIRE(no_overlap.perimeter_boundary_count > 0);
+        REQUIRE(no_overlap.wall_count == full_overlap.wall_count);
+        CHECK_THAT(no_overlap.wall_length, Catch::Matchers::WithinAbs(full_overlap.wall_length, scaled<double>(0.001)));
+        CHECK(no_overlap.wall_coordinate_sum == full_overlap.wall_coordinate_sum);
+        CHECK(full_overlap.bridge_wall_seam_area > no_overlap.bridge_wall_seam_area);
+    }
 }
