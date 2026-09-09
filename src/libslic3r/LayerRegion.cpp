@@ -508,13 +508,25 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
     const float overlap_scaled = float(scale_(overlap));
     const float wall_radius = float(scale_(0.5 * wall_flow.width())) + overlap_scaled;
     for (Surface &bridge : bridges) {
-        Polylines boundaries;
         const bool is_grid_bridge = bool(bridge.external_bridge_grid_walls);
-        if (is_grid_bridge)
-            boundaries = *bridge.external_bridge_grid_walls;
-        else
-            boundaries = perimeter_boundaries;
-        if (boundaries.empty())
+        if (is_grid_bridge && !bridge.external_bridge_grid_area)
+            continue;
+
+        // Keep the ordinary overhang-wall seam for grid cells too, but limit it
+        // to this cell. Grid walls are an additional, separate seam target.
+        ExPolygons wall_band;
+        if (!perimeter_boundaries.empty()) {
+            wall_band = union_ex(offset(perimeter_boundaries, wall_radius));
+            if (is_grid_bridge)
+                wall_band = intersection_ex(wall_band,
+                    ExPolygons{ *bridge.external_bridge_grid_area });
+        }
+        if (is_grid_bridge && !bridge.external_bridge_grid_walls->empty()) {
+            append(wall_band, union_ex(offset(*bridge.external_bridge_grid_walls,
+                float(scale_(0.5 * wall_flow.width())))));
+            wall_band = union_ex(wall_band);
+        }
+        if (wall_band.empty())
             continue;
 
         // Expand only the part of the bridge surface that is adjacent to an
@@ -525,9 +537,7 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
         // Grid wall polylines are already emitted as the wall center line.  Do
         // not add the requested overlap to their wall band a second time: the
         // bridge-side growth above is the complete seam overlap.
-        const float boundary_radius = is_grid_bridge ?
-            float(scale_(0.5 * wall_flow.width())) : wall_radius;
-        const ExPolygons seam = intersection_ex(grown, offset(boundaries, boundary_radius));
+        const ExPolygons seam = intersection_ex(grown, wall_band);
         if (seam.empty())
             continue;
         ExPolygons merged = union_ex(ExPolygons{ bridge.expolygon });
