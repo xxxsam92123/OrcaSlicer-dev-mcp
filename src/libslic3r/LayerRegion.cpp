@@ -507,6 +507,7 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
 
     const float overlap_scaled = float(scale_(overlap));
     const float wall_radius = float(scale_(0.5 * wall_flow.width())) + overlap_scaled;
+    const float grid_wall_radius = float(scale_(0.5 * wall_flow.width()));
     for (Surface &bridge : bridges) {
         const bool is_grid_bridge = bool(bridge.external_bridge_grid_walls);
         if (is_grid_bridge && !bridge.external_bridge_grid_area)
@@ -517,13 +518,10 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
         ExPolygons wall_band;
         if (!perimeter_boundaries.empty()) {
             wall_band = union_ex(offset(perimeter_boundaries, wall_radius));
-            if (is_grid_bridge)
-                wall_band = intersection_ex(wall_band,
-                    ExPolygons{ *bridge.external_bridge_grid_area });
         }
         if (is_grid_bridge && !bridge.external_bridge_grid_walls->empty()) {
             append(wall_band, union_ex(offset(*bridge.external_bridge_grid_walls,
-                float(scale_(0.5 * wall_flow.width())))));
+                grid_wall_radius)));
             wall_band = union_ex(wall_band);
         }
         if (wall_band.empty())
