@@ -255,3 +255,84 @@ TEST_CASE("Only one wall on the first layer needs a bottom shell", "[Perimeters]
     // No bottom shell: the option is inert, down to the same walls an unchecked box gives.
     CHECK_THAT(one_wall_no_shell, Catch::Matchers::WithinAbs(plain_no_shell, 1.0));
 }
+
+TEST_CASE("Overhang wall overlap changes mixed-surface wall geometry", "[OverhangWallOverlap]")
+{
+    struct OverhangMeasure {
+        size_t count = 0;
+        double length = 0.;
+        int64_t coordinate_sum = 0;
+        int64_t perimeter_coordinate_sum = 0;
+        int64_t bridge_coordinate_sum = 0;
+    };
+
+    const auto mixed_overhang_step = [] {
+        TriangleMesh base = make_cube(20., 20., 1.);
+        TriangleMesh top  = make_cube(30., 20., 2.);
+        top.translate(-5.f, 0.f, 1.f);
+        base.merge(top);
+        return base;
+    };
+    const auto measure = [&mixed_overhang_step](const char *wall_generator, const char *overlap) {
+        DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+        config.set_deserialize_strict({
+            { "wall_generator", wall_generator },
+            { "wall_loops", 3 },
+            { "layer_height", 0.2 },
+            { "initial_layer_print_height", 0.2 },
+            { "detect_overhang_wall", "1" },
+            { "enable_overhang_speed", "1" },
+            { "enable_support", false },
+            { "overhang_wall_overlap", overlap },
+        });
+        Print print;
+        init_and_process_print({ mixed_overhang_step() }, print, config);
+
+        OverhangMeasure out;
+        const auto account = [&out](const ExtrusionPath &path) {
+            for (const Point3 &point : path.polyline.points)
+                if (path.role() == erOverhangPerimeter)
+                    out.coordinate_sum += point.x() + point.y();
+                else if (path.role() == erPerimeter || path.role() == erExternalPerimeter)
+                    out.perimeter_coordinate_sum += point.x() + point.y();
+                else if (path.role() == erBridgeInfill || path.role() == erInternalBridgeInfill)
+                    out.bridge_coordinate_sum += point.x() + point.y();
+            if (path.role() == erOverhangPerimeter) {
+                ++out.count;
+                out.length += path.length();
+            }
+        };
+        for (const Layer *layer : print.objects().front()->layers())
+            for (const LayerRegion *region : layer->regions())
+                for (const ExtrusionEntity *entity : region->perimeters.flatten().entities)
+                    if (const auto *path = dynamic_cast<const ExtrusionPath *>(entity))
+                        account(*path);
+                    else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(entity))
+                        for (const ExtrusionPath &path : multi->paths)
+                            account(path);
+                    else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(entity))
+                        for (const ExtrusionPath &path : loop->paths)
+                            account(path);
+        return out;
+    };
+
+    const OverhangMeasure classic_zero = measure("classic", "0%");
+    const OverhangMeasure classic_zero_repeat = measure("classic", "0%");
+    const OverhangMeasure classic_full = measure("classic", "100%");
+    REQUIRE(classic_zero.count > 0);
+    REQUIRE(classic_full.count > 0);
+    CHECK(classic_zero.coordinate_sum == classic_zero_repeat.coordinate_sum);
+    CHECK(classic_full.coordinate_sum != classic_zero.coordinate_sum);
+    CHECK(std::abs(classic_full.perimeter_coordinate_sum - classic_zero.perimeter_coordinate_sum) <= scaled<int64_t>(0.001));
+    CHECK(classic_full.bridge_coordinate_sum == classic_zero.bridge_coordinate_sum);
+
+    const OverhangMeasure arachne_zero = measure("arachne", "0%");
+    const OverhangMeasure arachne_zero_repeat = measure("arachne", "0%");
+    const OverhangMeasure arachne_full = measure("arachne", "100%");
+    REQUIRE(arachne_zero.count > 0);
+    REQUIRE(arachne_full.count > 0);
+    CHECK(arachne_zero.coordinate_sum == arachne_zero_repeat.coordinate_sum);
+    CHECK(arachne_full.coordinate_sum != arachne_zero.coordinate_sum);
+    CHECK(std::abs(arachne_full.perimeter_coordinate_sum - arachne_zero.perimeter_coordinate_sum) <= scaled<int64_t>(0.001));
+    CHECK(arachne_full.bridge_coordinate_sum == arachne_zero.bridge_coordinate_sum);
+}

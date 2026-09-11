@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <map>
+#include <numeric>
 #include <stdio.h>
 #include <memory>
 
@@ -12,12 +14,16 @@
 #include "AABBTreeLines.hpp"
 #include "ExtrusionEntity.hpp"
 #include "Fill.hpp"
+#include "ExtrusionEntityCollection.hpp"
+#include "FillBase.hpp"
 #include "FillRectilinear.hpp"
 #include "FillLightning.hpp"
 #include "FillConcentricInternal.hpp"
 #include "FillTpmsD.hpp"
 #include "FillTpmsFK.hpp"
 #include "FillConcentric.hpp"
+#include "../InternalSolidGrid.hpp"
+#include "../ExternalBridgeGrid.hpp"
 #include "libslic3r.h"
 
 namespace Slic3r {
@@ -239,6 +245,13 @@ struct SurfaceFillParams
     bool 			bridge;
     // Non-negative for a bridge.
     float 			bridge_angle = 0.f;
+    // External bridge grid cells must remain separate through fill batching.
+    bool            preserve_bridge_grid = false;
+    bool            external_bridge_grid = false;
+    double          external_bridge_grid_infill_wall_overlap = 0.;
+    int             internal_solid_grid_cells_x = 2;
+    int             internal_solid_grid_cells_y = 2;
+    float           internal_solid_grid_angle_step = 0.f;
 
     // FillParams
     float       	density = 0.f;
@@ -294,6 +307,12 @@ struct SurfaceFillParams
 		// Sort first by decreasing bridging angle, so that the bridges are processed with priority when trimming one layer by the other.
 		if (this->bridge_angle > rhs.bridge_angle) return true;
 		if (this->bridge_angle < rhs.bridge_angle) return false;
+		RETURN_COMPARE_NON_EQUAL(preserve_bridge_grid);
+		RETURN_COMPARE_NON_EQUAL_TYPED(unsigned, external_bridge_grid);
+		RETURN_COMPARE_NON_EQUAL(external_bridge_grid_infill_wall_overlap);
+		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_cells_x);
+		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_cells_y);
+		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_angle_step);
 
 		RETURN_COMPARE_NON_EQUAL(extruder);
 		RETURN_COMPARE_NON_EQUAL_TYPED(unsigned, pattern);
@@ -326,8 +345,9 @@ struct SurfaceFillParams
 
 		return false;
 	}
-
 	bool operator==(const SurfaceFillParams &rhs) const {
+		if (this->external_bridge_grid_infill_wall_overlap != rhs.external_bridge_grid_infill_wall_overlap)
+			return false;
 		return  this->extruder 			      == rhs.extruder                &&
 				this->pattern 			      == rhs.pattern                 &&
 				this->spacing 			      == rhs.spacing                 &&
@@ -336,6 +356,11 @@ struct SurfaceFillParams
 				this->fixed_angle             == rhs.fixed_angle             &&
 				this->bridge                  == rhs.bridge                  &&
 				this->bridge_angle            == rhs.bridge_angle            &&
+                this->preserve_bridge_grid    == rhs.preserve_bridge_grid    &&
+                this->external_bridge_grid    == rhs.external_bridge_grid    &&
+				this->internal_solid_grid_cells_x == rhs.internal_solid_grid_cells_x &&
+				this->internal_solid_grid_cells_y == rhs.internal_solid_grid_cells_y &&
+				this->internal_solid_grid_angle_step == rhs.internal_solid_grid_angle_step &&
 				this->density                 == rhs.density                 &&
 				this->multiline               == rhs.multiline               &&
 //				this->dont_adjust             == rhs.dont_adjust             &&
@@ -987,6 +1012,16 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                     }
                 }
                 params.bridge_angle = float(surface.bridge_angle);
+                params.preserve_bridge_grid = surface.external_bridge_grid;
+                params.external_bridge_grid = surface.external_bridge_grid;
+                if (params.external_bridge_grid) {
+                    params.external_bridge_grid_infill_wall_overlap = region_config.external_bridge_grid_infill_wall_overlap.value;
+                }
+                if (params.pattern == ipInternalSolidGrid && params.extrusion_role == erSolidInfill) {
+                    params.internal_solid_grid_cells_x = region_config.internal_solid_grid_cells_x;
+                    params.internal_solid_grid_cells_y = region_config.internal_solid_grid_cells_y;
+                    params.internal_solid_grid_angle_step = Geometry::deg2rad(float(region_config.internal_solid_grid_angle_step.value));
+                }
 
                 // ORCA: Align infill angle to model
                 float align_offset = 0.f;
@@ -1097,10 +1132,16 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 	        }
 	}
 
-	{
-		Polygons all_polygons;
+    {
+        Polygons all_polygons;
 		for (SurfaceFill &fill : surface_fills)
 			if (! fill.expolygons.empty()) {
+                if (fill.params.preserve_bridge_grid) {
+					// Grid cells already have disjoint boundaries. Safety-unioning them
+					// here can merge adjacent cells and erase their angle clusters.
+					append(all_polygons, to_polygons(fill.expolygons));
+					continue;
+				}
 				if (fill.expolygons.size() > 1 || ! all_polygons.empty()) {
 					Polygons polys = to_polygons(std::move(fill.expolygons));
 		            // Make a union of polygons, use a safety offset, subtract the preceding polygons.
@@ -1297,6 +1338,43 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
 	const Slic3r::BoundingBox bbox 			= this->object()->bounding_box();
 	const auto                resolution 	= this->object()->print()->config().resolution.value;
 
+    // group_fills separates bridge cells by angle and later regularizes their
+    // polygons. Keep official cell separation and use the exact shared
+    // boundaries saved by the splitter instead of rebuilding them from
+    // post-grouping polygons.
+    std::map<size_t, std::vector<const Polylines *>> external_bridge_grid_walls_by_region;
+    std::set<std::pair<size_t, const Polylines *>> emitted_external_bridge_grid_walls;
+
+    for (const SurfaceFill &surface_fill : surface_fills) {
+        if (!surface_fill.params.bridge || !surface_fill.surface.external_bridge_grid_walls)
+            continue;
+        const Polylines *walls = surface_fill.surface.external_bridge_grid_walls.get();
+
+        if (emitted_external_bridge_grid_walls.emplace(surface_fill.region_id, walls).second)
+            external_bridge_grid_walls_by_region[surface_fill.region_id].push_back(walls);
+    }
+    for (auto &[region_id, wall_sets] : external_bridge_grid_walls_by_region) {
+        LayerRegion *layerm = m_regions[region_id];
+        const Flow wall_flow = layerm->bridging_flow(
+            frPerimeter, this->object()->config().thick_bridges);
+        auto *wall_batch = new ExtrusionEntityCollection();
+        wall_batch->no_sort = true;
+        wall_batch->external_bridge_grid_wall = true;
+        for (const Polylines *walls : wall_sets)
+            for (const Polyline &wall_line : *walls) {
+                ExtrusionPath wall_path(erOverhangPerimeter,
+                                        wall_flow.mm3_per_mm(),
+                                        wall_flow.width(),
+                                        wall_flow.height());
+                wall_path.polyline = Polyline3(wall_line);
+                wall_batch->entities.push_back(new ExtrusionPath(std::move(wall_path)));
+            }
+        if (!wall_batch->entities.empty())
+            layerm->fills.entities.push_back(wall_batch);
+        else
+            delete wall_batch;
+    }
+
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
 	{
 		static int iRun = 0;
@@ -1355,7 +1433,7 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
         FillParams params;
         params.density 		     = float(0.01 * surface_fill.params.density);
         params.multiline         = surface_fill.params.multiline;
-		params.dont_adjust		 = false; //  surface_fill.params.dont_adjust;
+		params.dont_adjust		 = surface_fill.params.pattern == ipInternalSolidGrid;
         params.anchor_length     = surface_fill.params.anchor_length;
 		params.anchor_length_max = surface_fill.params.anchor_length_max;
 		params.resolution        = resolution;
@@ -1377,6 +1455,115 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
         params.config               = &region_config;
         params.pattern              = surface_fill.params.pattern;
         params.fill_order           = surface_fill.params.fill_order;
+        params.internal_solid_grid_cells_x = surface_fill.params.internal_solid_grid_cells_x;
+        params.internal_solid_grid_cells_y = surface_fill.params.internal_solid_grid_cells_y;
+        params.internal_solid_grid_angle_step = surface_fill.params.internal_solid_grid_angle_step;
+
+        if (surface_fill.params.external_bridge_grid &&
+            surface_fill.params.external_bridge_grid_infill_wall_overlap > 0.) {
+            ExPolygons expanded;
+            for (const ExPolygon &expoly : surface_fill.expolygons) {
+                Surface cell(surface_fill.surface, expoly);
+                append(expanded, external_bridge_grid_infill_area(
+                    cell, 0.01 * surface_fill.params.external_bridge_grid_infill_wall_overlap,
+                    surface_fill.params.flow.width()));
+            }
+            surface_fill.expolygons = std::move(expanded);
+        }
+
+        // Collect internal grid walls before the source expolygons are moved
+        // into Surfaces and before the corresponding solid fill is appended.
+        if (surface_fill.params.pattern == ipInternalSolidGrid &&
+            surface_fill.params.extrusion_role == erSolidInfill &&
+            surface_fill.surface.surface_type == stInternalSolid) {
+            std::map<std::pair<Point, Point>, size_t> shared_edges;
+            for (const ExPolygon &expoly : surface_fill.expolygons) {
+                const Surface grid_surface(surface_fill.surface, expoly);
+                const Surfaces cells = split_internal_solid_grid_surface(grid_surface, {
+                    surface_fill.params.internal_solid_grid_cells_x,
+                    surface_fill.params.internal_solid_grid_cells_y
+                });
+                if (cells.size() <= 1)
+                    continue;
+                for (const Surface &cell : cells) {
+                    const Points &points = cell.expolygon.contour.points;
+                    for (size_t i = 0; i < points.size(); ++i) {
+                        Point first = points[i];
+                        Point second = points[(i + 1) % points.size()];
+                        if (second < first)
+                            std::swap(first, second);
+                        ++shared_edges[std::make_pair(first, second)];
+                    }
+                }
+            }
+
+            std::vector<std::pair<Point, Point>> internal_grid_edges;
+            internal_grid_edges.reserve(shared_edges.size());
+            for (const auto &[edge, count] : shared_edges)
+                if (count >= 2)
+                    internal_grid_edges.push_back(edge);
+
+            const coord_t endpoint_tolerance = 2;
+            const auto same_endpoint = [endpoint_tolerance](const Point &lhs, const Point &rhs) {
+                return std::abs(lhs.x() - rhs.x()) <= endpoint_tolerance &&
+                       std::abs(lhs.y() - rhs.y()) <= endpoint_tolerance;
+            };
+            const auto collinear = [](const Point &origin, const Point &direction, const Point &point) {
+                return cross2(direction, point - origin) == 0;
+            };
+            std::vector<Polyline> wall_lines;
+            std::vector<bool> consumed(internal_grid_edges.size(), false);
+            for (size_t edge_index = 0; edge_index < internal_grid_edges.size(); ++edge_index) {
+                if (consumed[edge_index])
+                    continue;
+                consumed[edge_index] = true;
+                Polyline grid_line;
+                grid_line.points = { internal_grid_edges[edge_index].first, internal_grid_edges[edge_index].second };
+
+                bool extended = true;
+                while (extended) {
+                    extended = false;
+                    for (size_t candidate_index = 0; candidate_index < internal_grid_edges.size(); ++candidate_index) {
+                        if (consumed[candidate_index])
+                            continue;
+                        const auto &candidate = internal_grid_edges[candidate_index];
+                        if (!collinear(grid_line.points.front(), grid_line.points.back() - grid_line.points.front(), candidate.first) &&
+                            !collinear(grid_line.points.front(), grid_line.points.back() - grid_line.points.front(), candidate.second))
+                            continue;
+                        if (same_endpoint(candidate.first, grid_line.points.back())) {
+                            grid_line.points.push_back(candidate.second);
+                        } else if (same_endpoint(candidate.second, grid_line.points.back())) {
+                            grid_line.points.push_back(candidate.first);
+                        } else if (same_endpoint(candidate.second, grid_line.points.front())) {
+                            grid_line.points.insert(grid_line.points.begin(), candidate.first);
+                        } else if (same_endpoint(candidate.first, grid_line.points.front())) {
+                            grid_line.points.insert(grid_line.points.begin(), candidate.second);
+                        } else {
+                            continue;
+                        }
+                        consumed[candidate_index] = true;
+                        extended = true;
+                    }
+                }
+                wall_lines.push_back(std::move(grid_line));
+            }
+
+            if (!wall_lines.empty()) {
+                auto *wall_batch = new ExtrusionEntityCollection();
+                wall_batch->no_sort = true;
+                wall_batch->internal_solid_infill_wall = true;
+                for (const Polyline &grid_line : wall_lines) {
+                    const Flow wall_flow = layerm->flow(frPerimeter);
+                    ExtrusionPath wall_path(erPerimeter,
+                                            wall_flow.mm3_per_mm(),
+                                            wall_flow.width(),
+                                            wall_flow.height());
+                    wall_path.polyline = Polyline3(grid_line);
+                    wall_batch->entities.push_back(new ExtrusionPath(wall_path));
+                }
+                m_regions[surface_fill.region_id]->fills.entities.push_back(wall_batch);
+            }
+        }
 
         // Orca: Checking the filling of a centered surface by drawing for each model parts
         bool is_top_or_bottom = params.extrusion_role == erTopSolidInfill || params.extrusion_role == erBottomSurface;
@@ -1415,10 +1602,6 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
                 expoly.symmetric_y(params.symmetric_y_axis);
             }
 
-			// Spacing is modified by the filler to indicate adjustments. Reset it for each expolygon.
-			f->spacing = surface_fill.params.spacing;
-			surface_fill.surface.expolygon = std::move(expoly);
-
 			if(surface_fill.params.bridge && surface_fill.surface.is_external() && surface_fill.params.density > 99.0){
 				params.density = layerm->region().config().bridge_density.get_abs_value(1.0);
 				params.dont_adjust = true;
@@ -1434,6 +1617,10 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
                 if (f->layer_id > 0 && f->layer_id <= elefant_layers)
                     params.density = 1.0f - (1.0f - elefant_density) * (elefant_layers - (f->layer_id - 1)) / elefant_layers; // Reverse calculation - The higher layer number means the higher density. Counting starts from the second layer.
             }
+
+			// Spacing is modified by the filler to indicate adjustments. Reset it for each expolygon.
+			f->spacing = surface_fill.params.spacing;
+			surface_fill.surface.expolygon = std::move(expoly);
             // make fill
 			f->fill_surface_extrusion(&surface_fill.surface,
 				params,

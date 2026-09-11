@@ -114,7 +114,7 @@ enum InfillPattern : int {
     ipHoneycomb, ip3DHoneycomb, ipLateralHoneycomb, ipLateralLattice,
     ipCrossHatch, ipTpmsD, ipTpmsFK, ipGyroid,
     ipConcentric, ipSpiralInset, ipHilbertCurve, ipArchimedeanChords, ipOctagramSpiral,
-    ipSupportBase, ipConcentricInternal,
+    ipSupportBase, ipConcentricInternal, ipInternalSolidGrid,
     ipCount,
 };
 
@@ -1264,6 +1264,11 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionInt,                  bottom_shell_layers))
     ((ConfigOptionFloat,                bottom_shell_thickness))
     ((ConfigOptionFloat,                bridge_angle))
+    ((ConfigOptionBool,                 external_bridge_grid_enable))
+    ((ConfigOptionInt,                  external_bridge_grid_cells_x))
+    ((ConfigOptionInt,                  external_bridge_grid_cells_y))
+    ((ConfigOptionFloat,                external_bridge_grid_angle_step))
+    ((ConfigOptionPercent,              external_bridge_grid_infill_wall_overlap))
     ((ConfigOptionFloat,                internal_bridge_angle)) // ORCA: Internal bridge angle override
     ((ConfigOptionBool,                 relative_bridge_angle)) // ORCA: Relative bridge angle flag
     ((ConfigOptionFloat,                bridge_flow))
@@ -1279,6 +1284,11 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<SurfaceFillOrder>, top_surface_fill_order))
     ((ConfigOptionEnum<SurfaceFillOrder>, bottom_surface_fill_order))
     ((ConfigOptionEnum<InfillPattern>, internal_solid_infill_pattern))
+    ((ConfigOptionInt,                  internal_solid_grid_cells_x))
+    ((ConfigOptionInt,                  internal_solid_grid_cells_y))
+    ((ConfigOptionFloat,                internal_solid_grid_angle_step))
+    // Kept for preset compatibility. Grid walls are always emitted for this pattern.
+    ((ConfigOptionBool,                 internal_solid_grid_walls))
     ((ConfigOptionFloatOrPercent,       outer_wall_line_width))
     ((ConfigOptionFloatsNullable,       outer_wall_speed))
     ((ConfigOptionFloat,                infill_direction))
@@ -1318,6 +1328,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionInt,                  sparse_infill_filament_id))
     ((ConfigOptionFloatOrPercent,       sparse_infill_line_width))
     ((ConfigOptionPercent,              infill_wall_overlap))
+    ((ConfigOptionPercent,              overhang_wall_overlap))
     ((ConfigOptionPercent,              top_bottom_infill_wall_overlap))
     ((ConfigOptionFloatsNullable,       sparse_infill_speed))
     ((ConfigOptionPercent, skeleton_infill_density))

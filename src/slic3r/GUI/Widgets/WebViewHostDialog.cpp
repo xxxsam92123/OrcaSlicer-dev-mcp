@@ -6,7 +6,6 @@
 #include "slic3r/GUI/Widgets/StateColor.hpp"
 #include <nlohmann/json.hpp>
 
-#include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
 
 #include <wx/log.h>
@@ -158,7 +157,6 @@ bool WebViewHostDialog::create_webview(const std::string& resource_path,
                                        const wxSize& min_size)
 {
     SetTitle(title);
-    SetMinSize(FromDIP(min_size));
 
     const wxString target_url = build_resource_url(resource_path);
     wxBoxSizer*    topsizer   = new wxBoxSizer(wxVERTICAL);
@@ -170,10 +168,13 @@ bool WebViewHostDialog::create_webview(const std::string& resource_path,
         return false;
     }
 
-    SetSizer(topsizer);
     topsizer->Add(m_browser, wxSizerFlags().Expand().Proportion(1));
 
+    SetSizerAndFit(topsizer);
+    SetMinSize(FromDIP(min_size));
+
     SetSize(FromDIP(dialog_size));
+    Layout();
     CenterOnParent();
 
     Bind(wxEVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, &WebViewHostDialog::on_script_message_event, this, m_browser->GetId());
@@ -190,17 +191,7 @@ bool WebViewHostDialog::create_webview(const std::string& resource_path,
 
 wxString WebViewHostDialog::build_resource_url(const std::string& resource_path) const
 {
-    wxString target_url = from_u8((boost::filesystem::path(resources_dir()) / resource_path).make_preferred().string());
-
-    if (append_language_to_url()) {
-        const wxString lang = wxGetApp().current_language_code_safe();
-        if (!lang.empty()) {
-            target_url += wxT("?lang=");
-            target_url += lang;
-        }
-    }
-
-    return wxString("file://") + target_url;
+    return WebView::BuildResourceUrl(resource_path, append_language_to_url());
 }
 
 void WebViewHostDialog::load_url(const wxString& url)

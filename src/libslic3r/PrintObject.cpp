@@ -1234,6 +1234,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "only_one_wall_first_layer"
             || opt_key == "extra_perimeters_on_overhangs"
             || opt_key == "detect_overhang_wall"
+            || opt_key == "overhang_wall_overlap"
             || opt_key == "initial_layer_line_width"
             || opt_key == "inner_wall_line_width"
             || opt_key == "infill_wall_overlap"
@@ -1412,6 +1413,11 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "extra_solid_infills"
             || opt_key == "ensure_vertical_shell_thickness"
             || opt_key == "bridge_angle"
+            || opt_key == "external_bridge_grid_enable"
+            || opt_key == "external_bridge_grid_cells_x"
+            || opt_key == "external_bridge_grid_cells_y"
+            || opt_key == "external_bridge_grid_angle_step"
+            || opt_key == "external_bridge_grid_infill_wall_overlap"
             || opt_key == "internal_bridge_angle" // ORCA: Internal bridge angle override
             || opt_key == "relative_bridge_angle" // ORCA: Relative bridge angle
             //BBS
@@ -1425,6 +1431,10 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "top_surface_fill_order"
             || opt_key == "bottom_surface_fill_order"
             || opt_key == "internal_solid_infill_pattern"
+            || opt_key == "internal_solid_grid_cells_x"
+            || opt_key == "internal_solid_grid_cells_y"
+            || opt_key == "internal_solid_grid_angle_step"
+            || opt_key == "internal_solid_grid_walls"
             || opt_key == "external_fill_link_max_length"
             || opt_key == "infill_anchor"
             || opt_key == "infill_anchor_max"
@@ -4495,6 +4505,7 @@ void PrintObject::combine_infill()
              // later to overlap perimeters, we need to counteract that too.
                 ((infill_pattern == ipRectilinear   ||
                   infill_pattern == ipMonotonic     ||
+                  infill_pattern == ipInternalSolidGrid ||
                   infill_pattern == ipGrid          ||
                   infill_pattern == ipLateralLattice     ||
                   infill_pattern == ipLine          ||
