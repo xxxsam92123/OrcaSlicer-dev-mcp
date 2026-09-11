@@ -108,7 +108,7 @@ TEST_CASE("External bridge grid configuration allows 32 cells per axis", "[Exter
 TEST_CASE("External bridge grid infill/wall overlap stays within the original bridge", "[ExternalBridgeGrid]")
 {
     const DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
-    REQUIRE_THAT(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value, Catch::Matchers::WithinAbs(0., 1e-6));
+    REQUIRE_THAT(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value, Catch::Matchers::WithinAbs(15., 1e-6));
     REQUIRE(print_config_def.get("external_bridge_infill_wall_overlap")->min == 0);
     REQUIRE(print_config_def.get("external_bridge_infill_wall_overlap")->max == 100);
 
@@ -359,6 +359,9 @@ TEST_CASE("External bridge overlap changes the bridge-to-overhang-wall seam", "[
     REQUIRE(external_zero.bridge_length > 0.);
     CHECK(infill_only_zero.bridge_length == Catch::Approx(external_zero.bridge_length).margin(SCALED_EPSILON));
     CHECK(both_full.bridge_length == Catch::Approx(external_full.bridge_length).margin(SCALED_EPSILON));
+
+    DynamicPrintConfig defaults = DynamicPrintConfig::full_print_config();
+    CHECK(defaults.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == Catch::Approx(15.));
 }
 
 TEST_CASE("Internal bridge overlap is isolated from external bridge overlap", "[InternalBridgeOverlap]")

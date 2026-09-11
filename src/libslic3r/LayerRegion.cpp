@@ -500,12 +500,19 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
                                                   const PrintRegionConfig &region_config, const Flow &bridge_flow,
                                                   const Flow &wall_flow)
 {
-    const double overlap = region_config.external_bridge_infill_wall_overlap.get_abs_value(bridge_flow.width());
+    // Match the internal bridge / inner-wall overlap semantics: the percentage
+    // reduces the wall-center to infill-center inset once. Do not apply the
+    // overlap independently to both the bridge boundary and the wall band.
+    const double overlap_base = wall_flow.spacing() + 0.5 * bridge_flow.spacing();
+    const double overlap = region_config.external_bridge_infill_wall_overlap.get_abs_value(overlap_base);
     if (overlap <= 0. || (perimeter_boundaries.empty() && std::none_of(bridges.begin(), bridges.end(),
         [](const Surface &surface) { return bool(surface.external_bridge_grid_walls); })))
         return;
 
     const float overlap_scaled = float(scale_(overlap));
+    // The ordinary wall band is only a selection mask for the bridge-side
+    // growth. It must reach across the requested overlap to select that seam;
+    // the merged geometry below still grows by overlap_scaled exactly once.
     const float wall_radius = float(scale_(0.5 * wall_flow.width())) + overlap_scaled;
     const float grid_wall_radius = float(scale_(0.5 * wall_flow.width()));
     for (Surface &bridge : bridges) {

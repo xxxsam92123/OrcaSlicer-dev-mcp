@@ -1461,11 +1461,11 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Strength");
     def->tooltip = L("Controls the overlap between the innermost overhang wall line and external bridge infill. It does not change the overlap between adjacent overhang wall lines.");
     def->sidetext = "%";
-    def->ratio_over = "bridge_line_width";
+    def->ratio_over = "inner_wall_line_width";
     def->min = 0;
     def->max = 100;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionPercent(0));
+    def->set_default_value(new ConfigOptionPercent(15));
 
     def = this->add("internal_bridge_infill_wall_overlap", coPercent);
     def->label = L("Internal bridge infill/inner wall overlap");
