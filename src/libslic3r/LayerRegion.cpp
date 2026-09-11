@@ -7,6 +7,7 @@
 #include "Print.hpp"
 #include "Surface.hpp"
 #include "BoundingBox.hpp"
+#include "ExternalBridgeGrid.hpp"
 #include "SVG.hpp"
 #include "Algorithm/RegionExpansion.hpp"
 
@@ -555,6 +556,18 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                     bridge_surface.bridge_angle += custom_angle_rad;
             }
         }
+        if (region_config.external_bridge_grid_enable) {
+            Surfaces split_bridges;
+            split_bridges.reserve(bridges.surfaces.size());
+            ExternalBridgeGridSettings grid_settings;
+            grid_settings.enabled = true;
+            grid_settings.cells_x = region_config.external_bridge_grid_cells_x;
+            grid_settings.cells_y = region_config.external_bridge_grid_cells_y;
+            grid_settings.angle_step_deg = region_config.external_bridge_grid_angle_step;
+            for (const Surface &bridge_surface : bridges.surfaces)
+                surfaces_append(split_bridges, split_external_bridge_surface(bridge_surface, grid_settings));
+            bridges.surfaces = std::move(split_bridges);
+        }
         BOOST_LOG_TRIVIAL(trace) << "Processing external surface, detecting bridges - done";
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
         {
@@ -856,10 +869,18 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
 					// Bridge was not detected (likely it is only supported at one side). Still it is a surface filled in
 					// using a bridging flow, therefore it makes sense to respect the custom bridging direction.
 					bridges[idx_last].bridge_angle = custom_angle;
-				}
+                }
                 */
                 // without safety offset, artifacts are generated (GH #2494)
-                surfaces_append(bottom, union_safety_offset_ex(grown), bridges[idx_last]);
+                ExternalBridgeGridSettings grid_settings;
+                grid_settings.enabled = region_config.external_bridge_grid_enable;
+                grid_settings.cells_x = region_config.external_bridge_grid_cells_x;
+                grid_settings.cells_y = region_config.external_bridge_grid_cells_y;
+                grid_settings.angle_step_deg = region_config.external_bridge_grid_angle_step;
+                for (ExPolygon &bridge_expolygon : union_safety_offset_ex(grown)) {
+                    Surface bridge_surface(bridges[idx_last], std::move(bridge_expolygon));
+                    surfaces_append(bottom, split_external_bridge_surface(bridge_surface, grid_settings));
+                }
             }
 
             fill_boundaries = to_polygons(fill_boundaries_ex);

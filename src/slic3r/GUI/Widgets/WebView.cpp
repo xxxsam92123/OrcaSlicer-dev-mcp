@@ -3,15 +3,18 @@
 #include "slic3r/Utils/MacDarkMode.hpp"
 
 #include <boost/log/trivial.hpp>
+#include <boost/filesystem/path.hpp>
 
 #include <wx/webviewarchivehandler.h>
 #include <wx/webviewfshandler.h>
+#include <wx/filename.h>
+#include <wx/filesys.h>
+#include <wx/uri.h>
 #if wxUSE_WEBVIEW_EDGE
 #include <wx/msw/webview_edge.h>
 #elif defined(__WXMAC__)
 #include <wx/osx/webview_webkit.h>
 #endif
-#include <wx/uri.h>
 #if defined(__WIN32__) || defined(__WXMAC__)
 #include "wx/private/jsscriptwrapper.h"
 #endif
@@ -231,6 +234,20 @@ wxDEFINE_EVENT(EVT_WEBVIEW_RECREATED, wxCommandEvent);
 static std::vector<wxWebView*> g_webviews;
 static std::vector<wxWebView*> g_delay_webviews;
 
+// wxURI::BuildURI() drops one slash from file:/// URLs because it models the
+// empty file authority as absent. Keep wxFileSystem::FileNameToURL() output
+// intact: WebView2 requires the standard file:///C:/... form on Windows.
+static wxString normalize_url(const wxString& url)
+{
+    wxString normalized = url;
+#ifdef __WIN32__
+    normalized.Replace("\\", "/");
+#endif
+    if (normalized.Left(8).CmpNoCase("file:///") == 0)
+        return normalized;
+    return normalized.empty() ? normalized : wxURI(normalized).BuildURI();
+}
+
 class WebViewRef : public wxObjectRefData
 {
 public:
@@ -251,6 +268,20 @@ static WebViewRef *webview_ref(wxWebView *webView)
     return webView ? static_cast<WebViewRef *>(webView->GetRefData()) : nullptr;
 }
 
+wxString WebView::BuildResourceUrl(std::string const &resource_path, bool append_language)
+{
+    wxFileName resource_file(Slic3r::GUI::from_u8((boost::filesystem::path(Slic3r::resources_dir()) / resource_path).make_preferred().string()));
+    resource_file.MakeAbsolute();
+
+    wxString target_url = wxFileSystem::FileNameToURL(resource_file);
+    if (append_language) {
+        const wxString language = Slic3r::GUI::wxGetApp().current_language_code_safe();
+        if (!language.empty())
+            target_url += wxT("?lang=") + language;
+    }
+    return target_url;
+}
+
 wxWebView* WebView::CreateWebView(wxWindow * parent, wxString const & url)
 {
 #if wxUSE_WEBVIEW_EDGE
@@ -264,12 +295,9 @@ wxWebView* WebView::CreateWebView(wxWindow * parent, wxString const & url)
         wxLogMessage("Using fixed edge version");
     }
 #endif
-    auto url2  = url;
-#ifdef __WIN32__
-    url2.Replace("\\", "/");
-#endif
-    if (!url2.empty()) { url2 = wxURI(url2).BuildURI(); }
-    BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << ": " << url2.ToUTF8();
+    const wxString url2 = normalize_url(url);
+    BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << ": input=" << url.ToUTF8()
+                             << ", final=" << url2.ToUTF8();
 
 #ifdef __WIN32__
     wxWebView* webView = new WebViewEdge;
@@ -287,7 +315,12 @@ wxWebView* WebView::CreateWebView(wxWindow * parent, wxString const & url)
         webView->SetUserAgent(wxString::Format("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.52 BBL-Slicer/v%s (%s) BBL-Language/%s",
                                                Slic3r::GUI::wxGetApp().get_bbl_client_version(), Slic3r::GUI::wxGetApp().dark_mode() ? "dark" : "light", language_code.mb_str()));
-        webView->Create(parent, wxID_ANY, url2, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
+        const bool created = webView->Create(parent, wxID_ANY, url2, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
+        if (!created) {
+            wxLogError("Could not create webview for URL '%s'", url2);
+            delete webView;
+            return nullptr;
+        }
         // We register the wxfs:// protocol for testing purposes
         webView->RegisterHandler(wxSharedPtr<wxWebViewHandler>(new wxWebViewArchiveHandler("bbl")));
         // And the memory: file system
@@ -302,7 +335,12 @@ wxWebView* WebView::CreateWebView(wxWindow * parent, wxString const & url)
             webView->RegisterHandler(wxSharedPtr<wxWebViewHandler>(new wxWebViewFSHandler("memory")));
             s_schemes_registered = true;
         }
-        webView->Create(parent, wxID_ANY, url2, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
+        const bool created = webView->Create(parent, wxID_ANY, url2, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
+        if (!created) {
+            wxLogError("Could not create webview for URL '%s'", url2);
+            delete webView;
+            return nullptr;
+        }
         webView->SetUserAgent(wxString::Format("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) BBL-Slicer/v%s (%s) BBL-Language/%s",
                                                Slic3r::GUI::wxGetApp().get_bbl_client_version(), Slic3r::GUI::wxGetApp().dark_mode() ? "dark" : "light", language_code.mb_str()));
 #endif
@@ -375,12 +413,9 @@ bool WebView::DownloadAndInstallWebViewRuntime()
 #endif
 void WebView::LoadUrl(wxWebView * webView, wxString const &url)
 {
-    auto url2  = url;
-#ifdef __WIN32__
-    url2.Replace("\\", "/");
-#endif
-    if (!url2.empty()) { url2 = wxURI(url2).BuildURI(); }
-    BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << url2.ToUTF8();
+    const wxString url2 = normalize_url(url);
+    BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << ": input=" << url.ToUTF8()
+                             << ", final=" << url2.ToUTF8();
     webView->LoadURL(url2);
 }
 

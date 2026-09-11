@@ -83,6 +83,8 @@ class SkeletalTrapezoidation
      * lines.
      */
     const BeadingStrategy& beading_strategy;
+    const Polygons *supported_area;
+    coord_t overhang_spacing_reduction;
 
 public:
     using Segment  = PolygonsSegmentIndex;
@@ -111,7 +113,9 @@ public:
     , coord_t discretization_step_size
     , coord_t transition_filter_dist
     , coord_t allowed_filter_deviation
-    , coord_t beading_propagation_transition_dist);
+    , coord_t beading_propagation_transition_dist
+    , const Polygons *supported_area = nullptr
+    , coord_t overhang_spacing_reduction = 0);
 
     /*!
      * A skeletal graph through the polygons that we need to fill with beads.

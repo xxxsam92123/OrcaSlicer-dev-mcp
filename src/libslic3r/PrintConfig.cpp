@@ -278,7 +278,8 @@ static t_config_enum_values s_keys_map_InfillPattern {
     { "spiralinset", ipSpiralInset },
     { "hilbertcurve", ipHilbertCurve },
     { "archimedeanchords", ipArchimedeanChords },
-    { "octagramspiral", ipOctagramSpiral }
+    { "octagramspiral", ipOctagramSpiral },
+    { "internal_solid_grid", ipInternalSolidGrid }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(InfillPattern)
 
@@ -1421,7 +1422,53 @@ void PrintConfigDef::init_fff_params()
     def->max = 180;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.));
-    
+
+    def = this->add("external_bridge_grid_enable", coBool);
+    def->label = L("Split external bridge into grid");
+    def->category = L("Strength");
+    def->tooltip = L("Split external bridge surfaces into rectangular cells and alternate the bridge direction between adjacent cells. Each axis supports 1 to 32 cells; small or fragmented surfaces may fall back to one bridge region.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("external_bridge_grid_cells_x", coInt);
+    def->label = L("External bridge grid cells X");
+    def->category = L("Strength");
+    def->sidetext = L("cells");
+    def->min = 1;
+    def->max = 32;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("external_bridge_grid_cells_y", coInt);
+    def->label = L("External bridge grid cells Y");
+    def->category = L("Strength");
+    def->sidetext = L("cells");
+    def->min = 1;
+    def->max = 32;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("external_bridge_grid_angle_step", coFloat);
+    def->label = L("External bridge grid angle step");
+    def->category = L("Strength");
+    def->tooltip = L("Alternating angle offset applied to adjacent external bridge cells.");
+    def->sidetext = u8"°";
+    def->min = 0;
+    def->max = 45;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(15.));
+
+    def = this->add("external_bridge_grid_infill_wall_overlap", coPercent);
+    def->label = L("External bridge infill/overhang wall overlap");
+    def->category = L("Strength");
+    def->tooltip = L("Controls the overlap between external bridge infill and the overhang walls generated along shared external bridge grid boundaries. The percentage is relative to bridge infill line width.");
+    def->sidetext = "%";
+    def->ratio_over = "bridge_line_width";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(0));
+
     // ORCA: Internal bridge angle override
     def = this->add("internal_bridge_angle", coFloat);
     def->label = L("Internal bridge infill direction");
@@ -2423,7 +2470,44 @@ void PrintConfigDef::init_fff_params()
     def->enum_keys_map = &ConfigOptionEnum<InfillPattern>::get_enum_values();
     def->enum_values   = def_top_fill_pattern->enum_values;
     def->enum_labels   = def_top_fill_pattern->enum_labels;
+    def->enum_values.push_back("internal_solid_grid");
+    def->enum_labels.push_back(L("Internal solid grid"));
     def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipMonotonic));
+
+    def = this->add("internal_solid_grid_cells_x", coInt);
+    def->label = L("Internal solid grid cells X");
+    def->category = L("Strength");
+    def->sidetext = L("cells");
+    def->min = 1;
+    def->max = 32;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("internal_solid_grid_cells_y", coInt);
+    def->label = L("Internal solid grid cells Y");
+    def->category = L("Strength");
+    def->sidetext = L("cells");
+    def->min = 1;
+    def->max = 32;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("internal_solid_grid_angle_step", coFloat);
+    def->label = L("Internal solid grid angle step");
+    def->category = L("Strength");
+    def->tooltip = L("Alternating angle offset applied to adjacent internal solid grid cells.");
+    def->sidetext = u8"\u00b0";
+    def->min = 0;
+    def->max = 45;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(15.));
+
+    // Do not consult this compatibility key while generating walls. Old presets
+    // may carry it, but selecting the grid pattern always includes its walls.
+    def = this->add("internal_solid_grid_walls", coBool);
+    def->category = L("Strength");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
     
     def = this->add("outer_wall_line_width", coFloatOrPercent);
     def->label = L("Outer wall");
@@ -4658,7 +4742,19 @@ void PrintConfigDef::init_fff_params()
     def->ratio_over = "inner_wall_line_width";
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionPercent(15));
-    
+
+    def = this->add("overhang_wall_overlap", coPercent);
+    def->label = L("Overhang wall line overlap");
+    def->category = L("Quality");
+    // xgettext:no-c-format, no-boost-format
+    def->tooltip = L("Controls the overlap between adjacent overhang wall lines. The percentage is relative to the overhang wall line width. Set this to 0% to preserve the previous spacing.");
+    def->sidetext = "%";
+    def->ratio_over = "bridge_line_width";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(0));
+
     def = this->add("top_bottom_infill_wall_overlap", coPercent);
     def->label = L("Top/Bottom solid infill/wall overlap");
     def->category = L("Strength");

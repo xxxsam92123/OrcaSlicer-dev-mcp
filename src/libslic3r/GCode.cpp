@@ -7615,8 +7615,23 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
                     extrusions.emplace_back(ee);
             if (! extrusions.empty()) {
                 m_config.apply(print.get_print_region(&region - &by_region.front()).config());
-                chain_and_reorder_extrusion_entities(extrusions, m_last_pos.to_point());
-                for (const ExtrusionEntity *fill : extrusions) {
+                // Grid walls are pre-batches. Keep them ahead of their fills even
+                // though ordinary infills are chained.
+                ExtrusionEntitiesPtr wall_batches;
+                ExtrusionEntitiesPtr sortable_extrusions;
+                for (ExtrusionEntity *fill : extrusions) {
+                    const auto *eec = dynamic_cast<const ExtrusionEntityCollection*>(fill);
+                    if (! ironing && eec != nullptr && eec->no_sort &&
+                        (eec->role() == erOverhangPerimeter ||
+                         eec->internal_solid_infill_wall || eec->external_bridge_grid_wall))
+                        wall_batches.emplace_back(fill);
+                    else
+                        sortable_extrusions.emplace_back(fill);
+                }
+                if (sortable_extrusions.size() > 1)
+                    chain_and_reorder_extrusion_entities(sortable_extrusions, m_last_pos.to_point());
+                wall_batches.insert(wall_batches.end(), sortable_extrusions.begin(), sortable_extrusions.end());
+                for (const ExtrusionEntity *fill : wall_batches) {
                     auto *eec = dynamic_cast<const ExtrusionEntityCollection*>(fill);
                     if (eec) {
                         for (ExtrusionEntity *ee : eec->chained_path_from(m_last_pos.to_point()).entities)
