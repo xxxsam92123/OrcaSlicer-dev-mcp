@@ -779,7 +779,7 @@ Response Controller::handle_load_model(const std::string &body)
             cfg->set_bool("enable_step_mesh_setting", false);
             cfg->set_bool("step_not_utf8_no_warn", true);
         }
-        std::vector<size_t> idxs = plater->load_files(std::vector<std::string>{ path },
+        std::vector<size_t> idxs = plater->load_files(std::vector<boost::filesystem::path>{ path },
                                                       LoadStrategy::LoadModel);
         if (is_step) {
             cfg->set_bool("enable_step_mesh_setting", prev_mesh_dlg);
