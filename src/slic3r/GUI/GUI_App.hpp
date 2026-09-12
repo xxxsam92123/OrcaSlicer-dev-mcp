@@ -1,23 +1,17 @@
 #ifndef slic3r_GUI_App_hpp_
 #define slic3r_GUI_App_hpp_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include "ActionRegistry.hpp"
 #include "ImGuiWrapper.hpp"
 #include "ConfigWizard.hpp"
 #include "OpenGLManager.hpp"
-#include "PresetBundleDialog.hpp"
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp"
-#include "slic3r/GUI/DeviceManager.hpp"
 #include "slic3r/GUI/UserNotification.hpp"
-#include "slic3r/Utils/NetworkAgent.hpp"
-#include "slic3r/Utils/BBLCloudServiceAgent.hpp"
-#include "slic3r/GUI/WebViewDialog.hpp"
-#include "slic3r/GUI/WebUserLoginDialog.hpp"
-#include "slic3r/GUI/BindDialog.hpp"
-#include "slic3r/GUI/HMS.hpp"
+#include "slic3r/Utils/CloudProvider.hpp"
 #include "slic3r/GUI/Jobs/UpgradeNetworkJob.hpp"
 #include "slic3r/GUI/HttpServer.hpp"
 
@@ -67,8 +61,13 @@ class ModelObject;
 class Model;
 class UserManager;
 class DeviceManager;
+class MachineObject;
 class NetworkAgent;
+class IPrinterAgent;
 class TaskManager;
+
+// Same typedef as in bambu_networking.hpp, so this header need not include it.
+typedef std::function<bool()> WasCancelledFn;
 
 namespace GUI{
 
@@ -88,6 +87,8 @@ class ParamsDialog;
 class HMSQuery;
 class ModelMallDialog;
 class PingCodeBindDialog;
+class PresetBundleDialog;
+class ZUserLogin;
 class NetworkErrorDialog;
 class PluginsDialog;
 class SpeedDialWebDialog;
@@ -838,7 +839,7 @@ wxDECLARE_EVENT(EVT_UPDATE_BUNDLE_COMPLETE, wxCommandEvent);
 bool is_support_filament(int extruder_id, bool strict_check = true);
 bool is_soluble_filament(int extruder_id);
 // check if the filament for model is in the list
-bool has_filaments(const std::vector<string>& model_filaments);
+bool has_filaments(const std::vector<std::string>& model_filaments);
 } // namespace GUI
 } // Slic3r
 
