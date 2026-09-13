@@ -2643,10 +2643,23 @@ void PerimeterGenerator::process_arachne()
                 // instead - the fallback when there is no top fill - walls the top/non-top interface and rings
                 // top-surface islands with inner walls that don't exist when the feature is disabled.
                 const bool     clip_walls_over_top = top_fill_replaces_inner_walls(*this->config);
-                const Polygons inner_region        = to_polygons(offset_ex(clip_walls_over_top ? infill_contour
+                Polygons       inner_region        = to_polygons(offset_ex(clip_walls_over_top ? infill_contour
                                                                                                : diff_ex(infill_contour, top_expolygons),
                                                                           wall_0_inset));
-                Arachne::WallToolPaths inner_wall_tool_paths(inner_region, perimeter_spacing, perimeter_spacing, coord_t(inner_loop_number + 1), 0, layer_height, input_params_tmp);
+                // `overhang_wall_overlap`: over an overhang the classic generator reduces the offset between
+                // its wall loops so that the overhang wall lines overlap. The inner walls of the Arachne
+                // generator are grown from `inner_region`, so grow that region by the same amount where it
+                // lies over an unsupported area: the walls there move towards the overhang wall and overlap
+                // it, while the outer wall and the supported areas keep their spacing.
+                if (apply_overhang_wall_overlap) {
+                    const Polygons overhang_area = diff(last_p, m_lower_slices_polygons);
+                    if (! overhang_area.empty()) {
+                        const Polygons grown = offset(inner_region, float(overhang_spacing_reduction));
+                        inner_region = union_(diff(inner_region, overhang_area), intersection(grown, overhang_area));
+                    }
+                }
+                Arachne::WallToolPaths inner_wall_tool_paths(inner_region, perimeter_spacing, perimeter_spacing, coord_t(inner_loop_number + 1), 0, layer_height, input_params_tmp,
+                                                             supported_area, overhang_spacing_reduction);
                 std::vector<Arachne::VariableWidthLines> inner_perimeters = inner_wall_tool_paths.getToolPaths();
 
                 if (clip_walls_over_top) {
@@ -2668,7 +2681,8 @@ void PerimeterGenerator::process_arachne()
             } else {
                 // There is no top surface ExPolygon, so we call Arachne again with parameters
                 // like when the single perimeter feature is disabled.
-                Arachne::WallToolPaths no_single_perimeter_tool_paths(last_p, bead_width_0, perimeter_spacing, coord_t(inner_loop_number + 2), wall_0_inset, layer_height, input_params_tmp);
+                Arachne::WallToolPaths no_single_perimeter_tool_paths(last_p, bead_width_0, perimeter_spacing, coord_t(inner_loop_number + 2), wall_0_inset, layer_height, input_params_tmp,
+                                                                      supported_area, overhang_spacing_reduction);
                 perimeters     = no_single_perimeter_tool_paths.getToolPaths();
                 infill_contour = union_ex(no_single_perimeter_tool_paths.getInnerContour());
             }
