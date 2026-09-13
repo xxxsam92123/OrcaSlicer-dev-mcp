@@ -1504,7 +1504,7 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
                     internal_grid_edges.push_back(edge);
 
             const coord_t endpoint_tolerance = 2;
-            const auto same_endpoint = [endpoint_tolerance](const Point &lhs, const Point &rhs) {
+            const auto same_endpoint = [](const Point &lhs, const Point &rhs) {
                 return std::abs(lhs.x() - rhs.x()) <= endpoint_tolerance &&
                        std::abs(lhs.y() - rhs.y()) <= endpoint_tolerance;
             };
