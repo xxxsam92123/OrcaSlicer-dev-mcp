@@ -26,6 +26,7 @@ public:
         // completes, so keep it alive in a shared_ptr captured by the handler.
         auto req_held = std::make_shared<http::request<http::string_body>>(std::move(req));
         m_ws.async_accept(*req_held, [self = shared_from_this(), req_held](beast::error_code ec) {
+            (void)req_held; // captured to keep the upgrade request alive until async_accept completes
             if (ec) return;
             self->m_server.ws_join(self);
             self->do_read();
@@ -165,6 +166,7 @@ private:
         m_stream.expires_after(std::chrono::seconds(15)); // re-arm timeout for the write (slow-reader guard)
         http::async_write(m_stream, *res,
             [self = shared_from_this(), res](beast::error_code, std::size_t) {
+                (void)res; // captured to keep the response alive until the write completes
                 beast::error_code ec2;
                 self->m_stream.socket().shutdown(tcp::socket::shutdown_send, ec2);
             });
