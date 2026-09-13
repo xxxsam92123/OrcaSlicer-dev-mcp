@@ -15152,6 +15152,91 @@ msgstr "悬垂墙走线重叠率"
 
 # AI Translated
 #: src/libslic3r/PrintConfig.cpp
+msgid "External bridge infill/overhang wall overlap"
+msgstr "外部桥接填充/悬垂墙重叠率"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Controls the overlap between the innermost overhang wall line and external bridge infill. It does not change the overlap between adjacent overhang wall lines."
+msgstr "控制最内侧悬垂墙走线与外部桥接填充之间的重叠率。它不会改变相邻悬垂墙走线之间的重叠率。"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "External bridge grid infill/grid wall overlap"
+msgstr "外部桥接网格填充/网格墙重叠率"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Controls the overlap between external bridge infill and shared walls generated between external bridge grid cells. It is independent from the ordinary external bridge infill/overhang wall overlap."
+msgstr "控制外部桥接填充与外部桥接网格单元之间生成的共享墙之间的重叠率。它独立于普通的外部桥接填充/悬垂墙重叠率。"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Internal bridge infill/inner wall overlap"
+msgstr "内部桥接填充/内墙重叠率"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Controls the overlap between internal bridge infill and inner walls or internal bridge boundaries. It follows the same wall inset and infill spacing algorithm as ordinary infill/wall overlap and does not affect external bridges or ordinary infill."
+msgstr "控制内部桥接填充与内墙或内部桥接边界之间的重叠率。它遵循与普通填充/墙重叠相同的墙内缩与填充间距算法，且不影响外部桥接或普通填充。"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Split external bridge into grid"
+msgstr "将外部桥接分割为网格"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Split external bridge surfaces into rectangular cells and alternate the bridge direction between adjacent cells. Each axis supports 1 to 32 cells; small or fragmented surfaces may fall back to one bridge region."
+msgstr "将外部桥接曲面分割为矩形单元，并在相邻单元之间交替桥接方向。每个轴支持 1 到 32 个单元；较小或破碎的曲面可能回退为单个桥接区域。"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "External bridge grid cells X"
+msgstr "外部桥接网格单元数 X"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "External bridge grid cells Y"
+msgstr "外部桥接网格单元数 Y"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "External bridge grid angle step"
+msgstr "外部桥接网格角度步长"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "Alternating angle offset applied to adjacent external bridge cells."
+msgstr "应用于相邻外部桥接单元的交替角度偏移。"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
+msgid "cells"
+msgstr "单元"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Internal solid grid"
+msgstr "内部实心网格"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Internal solid grid cells X"
+msgstr "内部实心网格 X 方向单元数"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Internal solid grid cells Y"
+msgstr "内部实心网格 Y 方向单元数"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Internal solid grid angle step"
+msgstr "内部实心网格角度步进"
+
+#: src/libslic3r/PrintConfig.cpp
+msgid "Alternating angle offset applied to adjacent internal solid grid cells."
+msgstr "应用于相邻内部实心网格单元的交替角度偏移。"
+
+# AI Translated
+#: src/libslic3r/PrintConfig.cpp
 #, no-c-format, no-boost-format
 msgid "Controls the overlap between adjacent overhang wall lines. The percentage is relative to the overhang wall line width. Set this to 0% to preserve the previous spacing."
 msgstr "控制相邻悬垂墙走线之间的重叠率。百分比相对于悬垂墙走线宽度。将其设为 0% 可保持原有间距。"

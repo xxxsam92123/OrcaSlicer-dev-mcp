@@ -109,8 +109,11 @@ TEST_CASE("External bridge grid infill/wall overlap stays within the original br
 {
     const DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
     REQUIRE_THAT(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value, Catch::Matchers::WithinAbs(15., 1e-6));
+    REQUIRE_THAT(config.opt<ConfigOptionPercent>("external_bridge_grid_infill_wall_overlap")->value, Catch::Matchers::WithinAbs(7.5, 1e-6));
     REQUIRE(print_config_def.get("external_bridge_infill_wall_overlap")->min == 0);
     REQUIRE(print_config_def.get("external_bridge_infill_wall_overlap")->max == 100);
+    REQUIRE(print_config_def.get("external_bridge_grid_infill_wall_overlap")->min == 0);
+    REQUIRE(print_config_def.get("external_bridge_grid_infill_wall_overlap")->max == 100);
 
     Surface bridge(stBottomBridge, make_square(64, 32));
     bridge.bridge_angle = 0.;
@@ -184,10 +187,11 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
         size_t        first_bridge_fill_entity = size_t(-1);
         size_t        wall_entities_before_bridge = 0;
         double        bridge_fill_length = 0.;
+        double        bridge_surface_area = 0.;
         BoundingBox   bridge_bbox;
     };
 
-    const auto collect_entities = [](bool enabled, double angle_step, const char *overlap = "0%") {
+    const auto collect_entities = [](bool enabled, double angle_step, const char *overlap = "0%", const char *grid_overlap = "7.5%") {
     DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
     config.set_deserialize_strict({
         { "external_bridge_grid_enable", enabled ? "1" : "0" },
@@ -195,6 +199,7 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
         { "external_bridge_grid_cells_y", "2" },
         { "external_bridge_grid_angle_step", std::to_string(angle_step) },
         { "external_bridge_infill_wall_overlap", overlap },
+        { "external_bridge_grid_infill_wall_overlap", grid_overlap },
         { "wall_loops", "0" }
     });
 
@@ -210,6 +215,7 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
                 if (surface.surface_type == stBottomBridge && surface.bridge_angle >= 0.) {
                     result.surface_angles.insert(int(std::lround(Geometry::rad2deg(surface.bridge_angle))) % 180);
                     result.cell_count += surface.external_bridge_grid;
+                    result.bridge_surface_area += surface.expolygon.area();
                     result.bridge_bbox.merge(get_extents(surface.expolygon));
                 }
             for (size_t collection_index = 0; collection_index < region->fills.entities.size(); ++collection_index) {
@@ -287,9 +293,9 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
     // A valid split must therefore emit at least one overhang-perimeter path.
     REQUIRE(enabled.bridge_wall_loops >= 1);
 
-    const auto grid_zero = collect_entities(true, 15., "0%");
-    const auto grid_full = collect_entities(true, 15., "100%");
-    REQUIRE(grid_full.bridge_fill_length != grid_zero.bridge_fill_length);
+    const auto grid_zero = collect_entities(true, 15., "15%", "0%");
+    const auto grid_full = collect_entities(true, 15., "15%", "100%");
+    REQUIRE(grid_full.bridge_surface_area != grid_zero.bridge_surface_area);
 
 }
 

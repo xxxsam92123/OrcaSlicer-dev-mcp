@@ -19,50 +19,58 @@
 
 using namespace Slic3r;
 
-TEST_CASE("Bridge wall overlap options use the renamed external key", "[Config][BridgeOverlap]")
+TEST_CASE("Bridge wall overlap options expose independent external keys", "[Config][BridgeOverlap]")
 {
     const DynamicPrintConfig defaults = DynamicPrintConfig::full_print_config();
     REQUIRE(defaults.has("external_bridge_infill_wall_overlap"));
-    REQUIRE_FALSE(defaults.has("external_bridge_grid_infill_wall_overlap"));
-    REQUIRE(defaults.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == 0.);
+    REQUIRE(defaults.has("external_bridge_grid_infill_wall_overlap"));
+    REQUIRE(defaults.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == 15.);
+    REQUIRE(defaults.opt<ConfigOptionPercent>("external_bridge_grid_infill_wall_overlap")->value == 7.5);
     REQUIRE(defaults.opt<ConfigOptionPercent>("internal_bridge_infill_wall_overlap")->value == 15.);
     REQUIRE(print_config_def.get("external_bridge_infill_wall_overlap")->min == 0);
     REQUIRE(print_config_def.get("external_bridge_infill_wall_overlap")->max == 100);
+    REQUIRE(print_config_def.get("external_bridge_grid_infill_wall_overlap")->min == 0);
+    REQUIRE(print_config_def.get("external_bridge_grid_infill_wall_overlap")->max == 100);
     REQUIRE(print_config_def.get("internal_bridge_infill_wall_overlap")->min == 0);
     REQUIRE(print_config_def.get("internal_bridge_infill_wall_overlap")->max == 100);
 }
 
-TEST_CASE("Legacy external bridge overlap migrates with the new key taking priority", "[Config][BridgeOverlap]")
+TEST_CASE("External bridge grid overlap remains independent when loading and saving", "[Config][BridgeOverlap]")
 {
-    SECTION("legacy key only") {
+    SECTION("grid key only") {
         DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
         config.load_from_ini_string("external_bridge_grid_infill_wall_overlap = 25%\n", Disable);
-        REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == 25.);
+        REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == 15.);
+        REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value != config.opt<ConfigOptionPercent>("external_bridge_grid_infill_wall_overlap")->value);
+        REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_grid_infill_wall_overlap")->value == 25.);
     }
 
     SECTION("both keys present") {
         DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
         config.load_from_ini_string("external_bridge_infill_wall_overlap = 40%\nexternal_bridge_grid_infill_wall_overlap = 25%\n", Disable);
         REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == 40.);
+        REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_grid_infill_wall_overlap")->value == 25.);
     }
 
     SECTION("neither key present") {
         const DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
-        REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == 0.);
+        REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == 15.);
+        REQUIRE(config.opt<ConfigOptionPercent>("external_bridge_grid_infill_wall_overlap")->value == 7.5);
     }
 }
 
-TEST_CASE("Saving bridge overlap writes only the new external key", "[Config][BridgeOverlap]")
+TEST_CASE("Saving external bridge overlap writes both independent keys", "[Config][BridgeOverlap]")
 {
     ScopedTemporaryFile temp(".json");
     DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
     config.set_deserialize_strict("external_bridge_infill_wall_overlap", "25%");
+    config.set_deserialize_strict("external_bridge_grid_infill_wall_overlap", "12.5%");
     config.save_to_json(temp.string(), "bridge-overlap", "User", "1.0.0");
 
     std::ifstream input(temp.string());
     const std::string json((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     REQUIRE(json.find("external_bridge_infill_wall_overlap") != std::string::npos);
-    REQUIRE(json.find("external_bridge_grid_infill_wall_overlap") == std::string::npos);
+    REQUIRE(json.find("external_bridge_grid_infill_wall_overlap") != std::string::npos);
 }
 
 SCENARIO("Generic config validation performs as expected.", "[Config]") {

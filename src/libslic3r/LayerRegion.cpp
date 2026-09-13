@@ -504,16 +504,14 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
     // reduces the wall-center to infill-center inset once. Do not apply the
     // overlap independently to both the bridge boundary and the wall band.
     const double overlap_base = wall_flow.spacing() + 0.5 * bridge_flow.spacing();
-    const double overlap = region_config.external_bridge_infill_wall_overlap.get_abs_value(overlap_base);
-    if (overlap <= 0. || (perimeter_boundaries.empty() && std::none_of(bridges.begin(), bridges.end(),
-        [](const Surface &surface) { return bool(surface.external_bridge_grid_walls); })))
+    const double external_overlap = region_config.external_bridge_infill_wall_overlap.get_abs_value(overlap_base);
+    const double grid_overlap = region_config.external_bridge_grid_infill_wall_overlap.get_abs_value(overlap_base);
+    if (external_overlap <= 0. && grid_overlap <= 0.)
         return;
 
-    const float overlap_scaled = float(scale_(overlap));
-    // The ordinary wall band is only a selection mask for the bridge-side
-    // growth. It must reach across the requested overlap to select that seam;
-    // the merged geometry below still grows by overlap_scaled exactly once.
-    const float wall_radius = float(scale_(0.5 * wall_flow.width())) + overlap_scaled;
+    const float external_overlap_scaled = float(scale_(external_overlap));
+    const float grid_overlap_scaled = float(scale_(grid_overlap));
+    const float wall_radius = float(scale_(0.5 * wall_flow.width())) + external_overlap_scaled;
     const float grid_wall_radius = float(scale_(0.5 * wall_flow.width()));
     for (Surface &bridge : bridges) {
         const bool is_grid_bridge = bool(bridge.external_bridge_grid_walls);
@@ -538,7 +536,8 @@ static void apply_external_bridge_wall_overlap(Surfaces &bridges, const Polyline
         // overhang-wall center line. The fill generator therefore receives the
         // seam overlap as its input boundary; no generated bridge path is
         // clipped after the fact.
-        const ExPolygons grown = offset_ex(ExPolygons{ bridge.expolygon }, overlap_scaled);
+        const float bridge_overlap_scaled = is_grid_bridge ? grid_overlap_scaled : external_overlap_scaled;
+        const ExPolygons grown = offset_ex(ExPolygons{ bridge.expolygon }, bridge_overlap_scaled);
         // Grid wall polylines are already emitted as the wall center line.  Do
         // not add the requested overlap to their wall band a second time: the
         // bridge-side growth above is the complete seam overlap.

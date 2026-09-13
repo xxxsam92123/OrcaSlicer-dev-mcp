@@ -1236,7 +1236,7 @@ static std::vector<std::string> s_Preset_print_options{
     "small_support_perimeter_speed",
     "small_support_perimeter_threshold",
     "bridge_angle",
-    "external_bridge_grid_enable", "external_bridge_grid_cells_x", "external_bridge_grid_cells_y", "external_bridge_grid_angle_step", "external_bridge_infill_wall_overlap", "internal_bridge_infill_wall_overlap",
+    "external_bridge_grid_enable", "external_bridge_grid_cells_x", "external_bridge_grid_cells_y", "external_bridge_grid_angle_step", "external_bridge_infill_wall_overlap", "external_bridge_grid_infill_wall_overlap", "internal_bridge_infill_wall_overlap",
     "internal_bridge_angle",
     "relative_bridge_angle",
     "filter_out_gap_fill",

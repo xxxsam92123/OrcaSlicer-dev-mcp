@@ -1419,6 +1419,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "external_bridge_grid_cells_y"
             || opt_key == "external_bridge_grid_angle_step"
             || opt_key == "external_bridge_infill_wall_overlap"
+            || opt_key == "external_bridge_grid_infill_wall_overlap"
             || opt_key == "internal_bridge_angle" // ORCA: Internal bridge angle override
             || opt_key == "relative_bridge_angle" // ORCA: Relative bridge angle
             //BBS

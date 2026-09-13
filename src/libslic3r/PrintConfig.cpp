@@ -1469,6 +1469,17 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionPercent(15));
 
+    def = this->add("external_bridge_grid_infill_wall_overlap", coPercent);
+    def->label = L("External bridge grid infill/grid wall overlap");
+    def->category = L("Strength");
+    def->tooltip = L("Controls the overlap between external bridge infill and shared walls generated between external bridge grid cells. It is independent from the ordinary external bridge infill/overhang wall overlap.");
+    def->sidetext = "%";
+    def->ratio_over = "inner_wall_line_width";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(7.5));
+
     def = this->add("internal_bridge_infill_wall_overlap", coPercent);
     def->label = L("Internal bridge infill/inner wall overlap");
     def->category = L("Strength");
@@ -9066,11 +9077,7 @@ void PrintConfigDef::init_sla_params()
 void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &value)
 {
     //BBS: handle legacy options
-    if (opt_key == "external_bridge_grid_infill_wall_overlap") {
-        // Legacy grid-specific name; migrate it to the single external
-        // bridge infill/overhang-wall overlap setting.
-        opt_key = "external_bridge_infill_wall_overlap";
-    } else if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
+    if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
         value = "Supertack Plate";
     } else if (opt_key == "enable_wipe_tower") {
         opt_key = "enable_prime_tower";
