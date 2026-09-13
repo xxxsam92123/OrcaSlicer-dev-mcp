@@ -588,7 +588,12 @@ bool ConfigBase::set_deserialize_nothrow(const t_config_option_key &opt_key_src,
             substitutions_ctxt.unrecogized_keys.push_back(opt_key_src);
         return true;
     }
-    return this->set_deserialize_raw(opt_key, value, substitutions_ctxt, append);
+    if (opt_key_src != opt_key && substitutions_ctxt.explicitly_set_keys.count(opt_key) != 0)
+        return true;
+    const bool result = this->set_deserialize_raw(opt_key, value, substitutions_ctxt, append);
+    if (result && opt_key_src == opt_key)
+        substitutions_ctxt.explicitly_set_keys.insert(opt_key);
+    return result;
 }
 
 void ConfigBase::set_deserialize(const t_config_option_key &opt_key_src, const std::string &value_src, ConfigSubstitutionContext& substitutions_ctxt, bool append)

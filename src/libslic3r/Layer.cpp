@@ -160,6 +160,7 @@ bool Layer::is_perimeter_compatible(const Print& print, const PrintRegion& a, co
 		&& config.opt_serialize("outer_wall_line_width") == other_config.opt_serialize("outer_wall_line_width")
 		&& config.detect_thin_wall                  == other_config.detect_thin_wall
         && config.infill_wall_overlap              == other_config.infill_wall_overlap
+        && config.internal_bridge_infill_wall_overlap == other_config.internal_bridge_infill_wall_overlap
         && config.overhang_wall_overlap             == other_config.overhang_wall_overlap
         && config.top_bottom_infill_wall_overlap              == other_config.top_bottom_infill_wall_overlap
         // Orca: these flags directly change the effective wall count produced by the perimeter
@@ -192,6 +193,7 @@ void Layer::make_perimeters()
         layer_region->perimeters.clear();
         layer_region->fills.clear();
         layer_region->thin_fills.clear();
+        layer_region->external_bridge_wall_boundary.clear();
     };
 
     // keep track of regions whose perimeters we have already generated
@@ -202,6 +204,7 @@ void Layer::make_perimeters()
  			(*layerm)->perimeters.clear();
  			(*layerm)->fills.clear();
  			(*layerm)->thin_fills.clear();
+            (*layerm)->external_bridge_wall_boundary.clear();
     	} else {
 	        size_t region_id = layerm - m_regions.begin();
 	        if (done[region_id])
@@ -233,7 +236,7 @@ void Layer::make_perimeters()
 
 	        if (layerms.size() == 1) {  // optimization
 	            (*layerm)->fill_surfaces.surfaces.clear();
-                (*layerm)->make_perimeters((*layerm)->slices, {*layerm}, &(*layerm)->fill_surfaces, &(*layerm)->fill_no_overlap_expolygons);
+                (*layerm)->make_perimeters((*layerm)->slices, {*layerm}, &(*layerm)->fill_surfaces, &(*layerm)->fill_no_overlap_expolygons, &(*layerm)->fill_internal_bridge_expolygons, &(*layerm)->external_bridge_fill_expolygons, &(*layerm)->external_bridge_wall_boundary);
 	            (*layerm)->fill_expolygons = to_expolygons((*layerm)->fill_surfaces.surfaces);
 	        } else {
 	            // Orca: Unlike the compatible regions above, the initiating region has not
@@ -261,7 +264,10 @@ void Layer::make_perimeters()
 	            SurfaceCollection fill_surfaces;
                 //BBS
                 ExPolygons fill_no_overlap;
-	            layerm_config->make_perimeters(new_slices, layerms, &fill_surfaces, &fill_no_overlap);
+                ExPolygons fill_internal_bridge;
+                ExPolygons external_bridge_fill;
+                Polylines external_bridge_wall_boundary;
+            layerm_config->make_perimeters(new_slices, layerms, &fill_surfaces, &fill_no_overlap, &fill_internal_bridge, &external_bridge_fill, &external_bridge_wall_boundary);
 
 	            // assign fill_surfaces to each layer
 	            if (!fill_surfaces.surfaces.empty()) {
@@ -272,6 +278,9 @@ void Layer::make_perimeters()
 	                    (*l)->fill_surfaces.set(std::move(expp), fill_surfaces.surfaces.front());
                         //BBS: Separate fill_no_overlap
                         (*l)->fill_no_overlap_expolygons = intersection_ex((*l)->slices.surfaces, fill_no_overlap);
+                        (*l)->fill_internal_bridge_expolygons = intersection_ex((*l)->slices.surfaces, fill_internal_bridge);
+                        (*l)->external_bridge_fill_expolygons = intersection_ex((*l)->slices.surfaces, external_bridge_fill);
+                        (*l)->external_bridge_wall_boundary = external_bridge_wall_boundary;
 	                }
 
 	                // When counterbore hole bridging (chbFilled) is active, process_no_bridge may

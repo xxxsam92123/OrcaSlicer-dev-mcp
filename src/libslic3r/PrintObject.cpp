@@ -1238,6 +1238,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "initial_layer_line_width"
             || opt_key == "inner_wall_line_width"
             || opt_key == "infill_wall_overlap"
+            || opt_key == "internal_bridge_infill_wall_overlap"
             || opt_key == "top_bottom_infill_wall_overlap"
             || opt_key == "seam_gap"
             || opt_key == "role_based_wipe_speed"
@@ -1417,6 +1418,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "external_bridge_grid_cells_x"
             || opt_key == "external_bridge_grid_cells_y"
             || opt_key == "external_bridge_grid_angle_step"
+            || opt_key == "external_bridge_infill_wall_overlap"
             || opt_key == "external_bridge_grid_infill_wall_overlap"
             || opt_key == "internal_bridge_angle" // ORCA: Internal bridge angle override
             || opt_key == "relative_bridge_angle" // ORCA: Relative bridge angle
@@ -2405,7 +2407,20 @@ void PrintObject::discover_vertical_shells()
                         }
                     }
 #endif /* SLIC3R_DEBUG_SLICE_PROCESSING */
-			        polygons_append(holes, cache_top_botom_regions[idx_layer].holes);
+                    const bool has_external_bridge = region_config.bottom_shell_layers.value > 0 &&
+                        std::any_of(layerm->slices.surfaces.begin(), layerm->slices.surfaces.end(),
+                            [](const Surface &surface) { return surface.surface_type == stBottomBridge; });
+                    // These shells become bridge anchor zones. Classify them
+                    // against clean wall geometry before regularization.
+                    const auto shell_holes = [&](size_t layer_id) {
+                        if (!has_external_bridge)
+                            return cache_top_botom_regions[layer_id].holes;
+                        Polygons clean;
+                        for (const LayerRegion *region : m_layers[layer_id]->regions())
+                            polygons_append(clean, to_polygons(region->fill_no_overlap_expolygons));
+                        return union_(clean);
+                    };
+                    polygons_append(holes, shell_holes(idx_layer));
                     auto combine_holes = [&holes](const Polygons &holes2) {
                         if (holes.empty() || holes2.empty())
                             holes.clear();
@@ -2434,7 +2449,7 @@ void PrintObject::discover_vertical_shells()
 	                        ++ i) {
                             at_least_one_top_projected = true;
 	                        const DiscoverVerticalShellsCacheEntry &cache = cache_top_botom_regions[i];
-                            combine_holes(cache.holes);
+                            combine_holes(shell_holes(i));
                             combine_shells(cache.top_surfaces);
 	                    }
                         if (!at_least_one_top_projected && i < int(cache_top_botom_regions.size())) {
@@ -2450,7 +2465,7 @@ void PrintObject::discover_vertical_shells()
                         if (one_more_layer_below_top_bottom_surfaces)
                             if (i < int(cache_top_botom_regions.size()) &&
                                 (i <= itop || m_layers[i]->bottom_z() - print_z < region_config.top_shell_thickness - EPSILON))
-                                combine_holes(cache_top_botom_regions[i].holes);
+                                combine_holes(shell_holes(i));
 	                }
 	                if (int n_bottom_layers = region_config.bottom_shell_layers.value; n_bottom_layers > 0) {
                         // Gather bottom regions projected to this layer.
@@ -2463,7 +2478,7 @@ void PrintObject::discover_vertical_shells()
 	                        -- i) {
                                 at_least_one_bottom_projected = true;
 	                        const DiscoverVerticalShellsCacheEntry &cache = cache_top_botom_regions[i];
-							combine_holes(cache.holes);
+                            combine_holes(shell_holes(i));
                             combine_shells(cache.bottom_surfaces);
 	                    }
 
@@ -2477,7 +2492,7 @@ void PrintObject::discover_vertical_shells()
                         if (one_more_layer_below_top_bottom_surfaces)
                             if (i >= 0 &&
                                 (i > ibottom || bottom_z - m_layers[i]->print_z < region_config.bottom_shell_thickness - EPSILON))
-                                combine_holes(cache_top_botom_regions[i].holes);
+                                combine_holes(shell_holes(i));
 	                }
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
                     {
@@ -2535,14 +2550,19 @@ void PrintObject::discover_vertical_shells()
 #endif /* SLIC3R_DEBUG_SLICE_PROCESSING */
 
                     // Trim the shells region by the internal & internal void surfaces.
-                    const Polygons polygonsInternal = to_polygons(layerm->fill_surfaces.filter_by_types({ stInternal, stInternalVoid, stInternalSolid }));
+                    Polygons polygonsInternal = to_polygons(layerm->fill_surfaces.filter_by_types({ stInternal, stInternalVoid, stInternalSolid }));
+                    if (has_external_bridge)
+                        polygonsInternal = intersection(polygonsInternal, to_polygons(layerm->fill_no_overlap_expolygons));
                     shell = intersection(shell, polygonsInternal, ApplySafetyOffset::Yes);
                     polygons_append(shell, diff(polygonsInternal, holes));
                     if (shell.empty())
                         continue;
 
                     // Append the internal solids, so they will be merged with the new ones.
-                    polygons_append(shell, to_polygons(layerm->fill_surfaces.filter_by_type(stInternalSolid)));
+                    Polygons existing_solid = to_polygons(layerm->fill_surfaces.filter_by_type(stInternalSolid));
+                    if (has_external_bridge)
+                        existing_solid = intersection(existing_solid, polygonsInternal);
+                    polygons_append(shell, std::move(existing_solid));
 
                     // These regions will be filled by a rectilinear full infill. Currently this type of infill
                     // only fills regions, which fit at least a single line. To avoid gaps in the sparse infill,
@@ -2742,17 +2762,22 @@ void PrintObject::bridge_over_infill()
                 // By shrinking the unsupported area, we avoid making bridges from narrow ensuring region along perimeters.
                 unsupported_area   = shrink(unsupported_area, expansion_multiplier * spacing);
                 unsupported_area   = diff(unsupported_area, lower_layer_solids);
-                
+
                 for (const LayerRegion *region : layer->regions()) {
+                    // Without a perimeter-generated target boundary there is
+                    // no safe wall/infill domain for an internal bridge.
+                    if (region->fill_internal_bridge_expolygons.empty())
+                        continue;
                     SurfacesPtr region_internal_solids = region->fill_surfaces.filter_by_type(stInternalSolid);
                     for (const Surface *s : region_internal_solids) {
                         Polygons unsupported         = intersection(to_polygons(s->expolygon), unsupported_area);
                         
                         // Orca: If the user has selected to always support internal overhanging regions, no matter how small
                         // skip the filtering
-                        if (po->config().dont_filter_internal_bridges.value == ibfNofilter){
+                        if(po->config().dont_filter_internal_bridges.value == ibfNofilter){
                             // expand the unsupported area by 4x spacing to trigger internal bridging
                             unsupported = expand(unsupported, 4 * spacing);
+                            unsupported = intersection(unsupported, to_polygons(region->fill_internal_bridge_expolygons));
                             candidate_surfaces.push_back(CandidateSurface(s, lidx, unsupported, region, 0));
                         }else{
                             // The following flag marks those surfaces, which overlap with unuspported area, but at least part of them is supported.
@@ -2768,6 +2793,7 @@ void PrintObject::bridge_over_infill()
                                     }
                                 }
                                 worth_bridging = intersection(closing(worth_bridging, float(SCALED_EPSILON)), s->expolygon);
+                                worth_bridging = intersection(worth_bridging, to_polygons(region->fill_internal_bridge_expolygons));
                                 candidate_surfaces.push_back(CandidateSurface(s, lidx, worth_bridging, region, 0));
                                 
 #ifdef DEBUG_BRIDGE_OVER_INFILL
@@ -3532,7 +3558,11 @@ void PrintObject::bridge_over_infill()
                                                                                        bridging_angle, scan_spacing, true));
                     }
                     bridging_area          = intersection(bridging_area, limiting_area);
-                    bridging_area          = intersection(bridging_area, total_fill_area);
+                    // Reconstructed bridge geometry may grow past the boundary.
+                    // Reapply the PerimeterGenerator boundary after all
+                    // morphology; never fall back to the model slices.
+                    bridging_area = candidate.region->fill_internal_bridge_expolygons.empty() ? Polygons{} :
+                        intersection(bridging_area, to_polygons(candidate.region->fill_internal_bridge_expolygons));
                     bridging_area          = diff(bridging_area, total_top_area);
                     expansion_area         = diff(expansion_area, bridging_area);
 

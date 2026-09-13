@@ -1,10 +1,12 @@
 #include <catch2/catch_all.hpp>
 
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <set>
 
 #include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/ExternalBridgeGrid.hpp"
@@ -106,7 +108,10 @@ TEST_CASE("External bridge grid configuration allows 32 cells per axis", "[Exter
 TEST_CASE("External bridge grid infill/wall overlap stays within the original bridge", "[ExternalBridgeGrid]")
 {
     const DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
-    REQUIRE_THAT(config.opt_float("external_bridge_grid_infill_wall_overlap"), Catch::Matchers::WithinAbs(0., 1e-6));
+    REQUIRE_THAT(config.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value, Catch::Matchers::WithinAbs(15., 1e-6));
+    REQUIRE_THAT(config.opt<ConfigOptionPercent>("external_bridge_grid_infill_wall_overlap")->value, Catch::Matchers::WithinAbs(7.5, 1e-6));
+    REQUIRE(print_config_def.get("external_bridge_infill_wall_overlap")->min == 0);
+    REQUIRE(print_config_def.get("external_bridge_infill_wall_overlap")->max == 100);
     REQUIRE(print_config_def.get("external_bridge_grid_infill_wall_overlap")->min == 0);
     REQUIRE(print_config_def.get("external_bridge_grid_infill_wall_overlap")->max == 100);
 
@@ -181,16 +186,20 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
         size_t        first_wall_entity = size_t(-1);
         size_t        first_bridge_fill_entity = size_t(-1);
         size_t        wall_entities_before_bridge = 0;
+        double        bridge_fill_length = 0.;
+        double        bridge_surface_area = 0.;
         BoundingBox   bridge_bbox;
     };
 
-    const auto collect_entities = [](bool enabled, double angle_step) {
+    const auto collect_entities = [](bool enabled, double angle_step, const char *overlap = "0%", const char *grid_overlap = "7.5%") {
     DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
     config.set_deserialize_strict({
         { "external_bridge_grid_enable", enabled ? "1" : "0" },
         { "external_bridge_grid_cells_x", "2" },
         { "external_bridge_grid_cells_y", "2" },
         { "external_bridge_grid_angle_step", std::to_string(angle_step) },
+        { "external_bridge_infill_wall_overlap", overlap },
+        { "external_bridge_grid_infill_wall_overlap", grid_overlap },
         { "wall_loops", "0" }
     });
 
@@ -206,6 +215,7 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
                 if (surface.surface_type == stBottomBridge && surface.bridge_angle >= 0.) {
                     result.surface_angles.insert(int(std::lround(Geometry::rad2deg(surface.bridge_angle))) % 180);
                     result.cell_count += surface.external_bridge_grid;
+                    result.bridge_surface_area += surface.expolygon.area();
                     result.bridge_bbox.merge(get_extents(surface.expolygon));
                 }
             for (size_t collection_index = 0; collection_index < region->fills.entities.size(); ++collection_index) {
@@ -226,6 +236,7 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
                 const auto account = [&result](const ExtrusionPath &path) {
                     if (path.role() != erBridgeInfill)
                         return;
+                    result.bridge_fill_length += path.length();
                     const Points3 &points = path.polyline.points;
                     for (size_t i = 1; i < points.size(); ++i) {
                         const double dx = double(points[i].x() - points[i - 1].x());
@@ -282,4 +293,160 @@ TEST_CASE("External bridge grid emits bridge walls only for split cells", "[Exte
     // A valid split must therefore emit at least one overhang-perimeter path.
     REQUIRE(enabled.bridge_wall_loops >= 1);
 
+    const auto grid_zero = collect_entities(true, 15., "15%", "0%");
+    const auto grid_full = collect_entities(true, 15., "15%", "100%");
+    REQUIRE(grid_full.bridge_surface_area != grid_zero.bridge_surface_area);
+
+}
+
+TEST_CASE("External bridge overlap changes the bridge-to-overhang-wall seam", "[ExternalBridgeOverlap]")
+{
+    const char *wall_generator = GENERATE("classic", "arachne");
+    CAPTURE(wall_generator);
+    struct BridgeMeasure {
+        double seam_area = 0.;
+        double bridge_length = 0.;
+        double surface_area = 0.;
+        double angle_sum = 0.;
+        double seed_area = 0.;
+    };
+    const auto bridge_measure = [wall_generator](const char *external_overlap, const char *infill_overlap) {
+        DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+        config.set_deserialize_strict({
+            { "external_bridge_grid_enable", false },
+            { "external_bridge_infill_wall_overlap", external_overlap },
+            { "infill_wall_overlap", infill_overlap },
+            { "wall_generator", wall_generator },
+
+            // The dedicated overlap is defined at the bridge-to-overhang-wall
+            // seam, so this fixture must generate an actual perimeter target.
+            { "wall_loops", 3 },
+        });
+
+        Print print;
+        Test::init_and_process_print({ Test::TestMesh::bridge_with_hole }, print, config);
+
+        BridgeMeasure result;
+        for (const Layer *layer : print.objects().front()->layers())
+            for (const LayerRegion *region : layer->regions()) {
+                for (const Surface &surface : region->slices.surfaces)
+                    if (surface.surface_type == stBottomBridge)
+                        result.seed_area += area(intersection_ex(ExPolygons{surface.expolygon}, region->external_bridge_fill_expolygons));
+                for (const Surface &surface : region->fill_surfaces.surfaces)
+                    if (surface.surface_type == stBottomBridge) {
+                        result.surface_area += surface.expolygon.area();
+                        result.angle_sum += surface.bridge_angle;
+                        result.seam_area += area(intersection_ex(
+                            ExPolygons{ surface.expolygon },
+                            offset(region->external_bridge_wall_boundary, float(scale_(1.0)))));
+                    }
+                for (const ExtrusionEntity *entity : region->fills.flatten().entities) {
+                    const auto account = [&result](const ExtrusionPath &path) {
+                        if (path.role() == erBridgeInfill)
+                            result.bridge_length += path.length();
+                    };
+                    if (const auto *path = dynamic_cast<const ExtrusionPath *>(entity))
+                        account(*path);
+                    else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(entity))
+                        for (const ExtrusionPath &path : multi->paths)
+                            account(path);
+                    else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(entity))
+                        for (const ExtrusionPath &path : loop->paths)
+                            account(path);
+                }
+            }
+        return result;
+    };
+
+    const auto external_zero = bridge_measure("0%", "0%");
+    const auto external_full = bridge_measure("100%", "0%");
+    const auto infill_only_zero = bridge_measure("0%", "100%");
+    const auto both_full = bridge_measure("100%", "100%");
+    CAPTURE(external_zero.surface_area, infill_only_zero.surface_area, external_zero.angle_sum, infill_only_zero.angle_sum);
+    CAPTURE(external_zero.seed_area, infill_only_zero.seed_area);
+    REQUIRE(external_zero.seam_area > 0.);
+    CHECK(external_full.seam_area > external_zero.seam_area);
+    CHECK(infill_only_zero.seam_area == Catch::Approx(external_zero.seam_area).margin(SCALED_EPSILON));
+    CHECK(both_full.seam_area == Catch::Approx(external_full.seam_area).margin(SCALED_EPSILON));
+    REQUIRE(external_zero.bridge_length > 0.);
+    CHECK(infill_only_zero.bridge_length == Catch::Approx(external_zero.bridge_length).margin(SCALED_EPSILON));
+    CHECK(both_full.bridge_length == Catch::Approx(external_full.bridge_length).margin(SCALED_EPSILON));
+
+    DynamicPrintConfig defaults = DynamicPrintConfig::full_print_config();
+    CHECK(defaults.opt<ConfigOptionPercent>("external_bridge_infill_wall_overlap")->value == Catch::Approx(15.));
+}
+
+TEST_CASE("Internal bridge overlap is isolated from external bridge overlap", "[InternalBridgeOverlap]")
+{
+    struct Measure {
+        size_t count = 0;
+        double length = 0.;
+        double outside_clean_area = 0.;
+        double outside_internal_boundary_area = 0.;
+        double internal_bridge_boundary_area = 0.;
+    };
+
+    const auto measure = [](Test::TestMesh mesh, const char *wall_generator, const char *external_overlap, const char *internal_overlap) {
+        DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+        config.set_deserialize_strict({
+            { "dont_filter_internal_bridges", "nofilter" },
+            { "wall_generator", wall_generator },
+            { "external_bridge_infill_wall_overlap", external_overlap },
+            { "internal_bridge_infill_wall_overlap", internal_overlap },
+            { "wall_loops", 2 },
+        });
+
+        Print print;
+        Test::init_and_process_print({ mesh }, print, config);
+
+        Measure result;
+        for (const Layer *layer : print.objects().front()->layers())
+            for (const LayerRegion *region : layer->regions())
+                for (const ExtrusionEntity *entity : region->fills.flatten().entities)
+                    if (const auto *path = dynamic_cast<const ExtrusionPath *>(entity))
+                        if (path->role() == erInternalBridgeInfill) {
+                            ++result.count;
+                            result.length += path->length();
+                        }
+        for (const Layer *layer : print.objects().front()->layers())
+            for (const LayerRegion *region : layer->regions()) {
+                if (region->fill_no_overlap_expolygons.empty())
+                    continue;
+                result.internal_bridge_boundary_area += area(region->fill_internal_bridge_expolygons);
+                for (const Surface &surface : region->fill_surfaces.surfaces)
+                    if (surface.surface_type == stInternalBridge)
+                        result.outside_clean_area += area(diff_ex(
+                            ExPolygons{ surface.expolygon }, region->fill_no_overlap_expolygons));
+                for (const Surface &surface : region->fill_surfaces.surfaces)
+                    if (surface.surface_type == stInternalBridge)
+                        result.outside_internal_boundary_area += area(diff_ex(
+                            ExPolygons{ surface.expolygon }, region->fill_internal_bridge_expolygons));
+            }
+        return result;
+    };
+
+    const std::array<Test::TestMesh, 4> candidates {
+        Test::TestMesh::slopy_cube,
+        Test::TestMesh::sloping_hole,
+        Test::TestMesh::cube_with_concave_hole,
+        Test::TestMesh::cube_with_hole,
+    };
+    for (const char *wall_generator : { "classic", "arachne" }) {
+        bool found_internal_bridge = false;
+        for (const Test::TestMesh mesh : candidates) {
+            const Measure internal_zero = measure(mesh, wall_generator, "0%", "0%");
+            const Measure internal_full = measure(mesh, wall_generator, "0%", "100%");
+            const Measure external_changed = measure(mesh, wall_generator, "100%", "0%");
+            if (internal_zero.count == 0)
+                continue;
+            found_internal_bridge = true;
+            CHECK(internal_full.internal_bridge_boundary_area != internal_zero.internal_bridge_boundary_area);
+            CHECK(external_changed.internal_bridge_boundary_area == Catch::Approx(internal_zero.internal_bridge_boundary_area));
+            CHECK(internal_zero.outside_clean_area == Catch::Approx(0.).margin(SCALED_EPSILON));
+            CHECK(internal_zero.outside_internal_boundary_area == Catch::Approx(0.).margin(SCALED_EPSILON));
+            CHECK(internal_full.outside_internal_boundary_area == Catch::Approx(0.).margin(SCALED_EPSILON));
+            break;
+        }
+        REQUIRE(found_internal_bridge);
+    }
 }

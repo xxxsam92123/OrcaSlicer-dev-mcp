@@ -1268,7 +1268,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionInt,                  external_bridge_grid_cells_x))
     ((ConfigOptionInt,                  external_bridge_grid_cells_y))
     ((ConfigOptionFloat,                external_bridge_grid_angle_step))
+    ((ConfigOptionPercent,              external_bridge_infill_wall_overlap))
     ((ConfigOptionPercent,              external_bridge_grid_infill_wall_overlap))
+    ((ConfigOptionPercent,              internal_bridge_infill_wall_overlap))
     ((ConfigOptionFloat,                internal_bridge_angle)) // ORCA: Internal bridge angle override
     ((ConfigOptionBool,                 relative_bridge_angle)) // ORCA: Relative bridge angle flag
     ((ConfigOptionFloat,                bridge_flow))

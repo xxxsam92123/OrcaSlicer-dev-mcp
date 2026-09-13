@@ -2832,6 +2832,9 @@ void TabPrint::build()
         optgroup->append_single_option_line("filter_out_gap_fill", "strength_settings_infill#filter-out-tiny-gaps");
         optgroup->append_single_option_line("separated_infills", "strength_settings_infill#separated-infills");
         optgroup->append_single_option_line("infill_wall_overlap", "strength_settings_infill#infill-wall-overlap");
+        optgroup->append_single_option_line("external_bridge_infill_wall_overlap", "strength_settings_infill#infill-wall-overlap");
+        optgroup->append_single_option_line("external_bridge_grid_infill_wall_overlap", "strength_settings_infill#infill-wall-overlap");
+        optgroup->append_single_option_line("internal_bridge_infill_wall_overlap", "strength_settings_infill#infill-wall-overlap");
 
         optgroup = page->new_optgroup(L("Advanced"), L"param_advanced");
         optgroup->append_single_option_line("align_infill_direction_to_model", "strength_settings_advanced#align-directions-to-model");
@@ -2841,7 +2844,6 @@ void TabPrint::build()
         optgroup->append_single_option_line("external_bridge_grid_cells_x", "strength_settings_advanced#bridge-infill-direction");
         optgroup->append_single_option_line("external_bridge_grid_cells_y", "strength_settings_advanced#bridge-infill-direction");
         optgroup->append_single_option_line("external_bridge_grid_angle_step", "strength_settings_advanced#bridge-infill-direction");
-        optgroup->append_single_option_line("external_bridge_grid_infill_wall_overlap", "strength_settings_advanced#bridge-infill-direction");
         optgroup->append_single_option_line("internal_bridge_angle", "strength_settings_advanced#bridge-infill-direction"); // ORCA: Internal bridge angle override
         optgroup->append_single_option_line("relative_bridge_angle", "strength_settings_advanced#relative-bridge-angle");
         optgroup->append_single_option_line("minimum_sparse_infill_area", "strength_settings_advanced#minimum-sparse-infill-threshold");

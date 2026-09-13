@@ -851,10 +851,14 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
         toggle_line(el, internal_solid_grid);
 
     for (auto el : { "infill_direction", "sparse_infill_line_width", "gap_fill_target","filter_out_gap_fill","infill_wall_overlap",
-        "bridge_angle", "external_bridge_grid_enable", "external_bridge_grid_cells_x", "external_bridge_grid_cells_y", "external_bridge_grid_angle_step", "external_bridge_grid_infill_wall_overlap", "internal_bridge_angle", "relative_bridge_angle",
+        "bridge_angle", "external_bridge_grid_enable", "external_bridge_grid_cells_x", "external_bridge_grid_cells_y", "external_bridge_grid_angle_step", "internal_bridge_angle", "relative_bridge_angle",
         "solid_infill_direction", "solid_infill_rotate_template", "internal_solid_infill_pattern", "internal_solid_grid_cells_x", "internal_solid_grid_cells_y", "internal_solid_grid_angle_step", "internal_solid_filament_id", "top_surface_filament_id", "bottom_surface_filament_id",
         })
         toggle_field(el, have_infill || has_solid_infill);
+    // These are user-editable process settings, not model-dependent controls.
+    toggle_field("external_bridge_infill_wall_overlap", true);
+    toggle_field("external_bridge_grid_infill_wall_overlap", true);
+    toggle_field("internal_bridge_infill_wall_overlap", true);
     for (auto el : { "sparse_infill_speed", "bridge_speed", "internal_bridge_speed"})
         toggle_field(el, have_infill || has_solid_infill, variant_index);
 

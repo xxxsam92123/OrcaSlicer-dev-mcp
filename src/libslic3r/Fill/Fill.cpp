@@ -248,7 +248,7 @@ struct SurfaceFillParams
     // External bridge grid cells must remain separate through fill batching.
     bool            preserve_bridge_grid = false;
     bool            external_bridge_grid = false;
-    double          external_bridge_grid_infill_wall_overlap = 0.;
+    double          internal_bridge_infill_wall_overlap = 0.;
     int             internal_solid_grid_cells_x = 2;
     int             internal_solid_grid_cells_y = 2;
     float           internal_solid_grid_angle_step = 0.f;
@@ -309,7 +309,7 @@ struct SurfaceFillParams
 		if (this->bridge_angle < rhs.bridge_angle) return false;
 		RETURN_COMPARE_NON_EQUAL(preserve_bridge_grid);
 		RETURN_COMPARE_NON_EQUAL_TYPED(unsigned, external_bridge_grid);
-		RETURN_COMPARE_NON_EQUAL(external_bridge_grid_infill_wall_overlap);
+        RETURN_COMPARE_NON_EQUAL(internal_bridge_infill_wall_overlap);
 		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_cells_x);
 		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_cells_y);
 		RETURN_COMPARE_NON_EQUAL(internal_solid_grid_angle_step);
@@ -346,7 +346,7 @@ struct SurfaceFillParams
 		return false;
 	}
 	bool operator==(const SurfaceFillParams &rhs) const {
-		if (this->external_bridge_grid_infill_wall_overlap != rhs.external_bridge_grid_infill_wall_overlap)
+        if (this->internal_bridge_infill_wall_overlap != rhs.internal_bridge_infill_wall_overlap)
 			return false;
 		return  this->extruder 			      == rhs.extruder                &&
 				this->pattern 			      == rhs.pattern                 &&
@@ -1014,9 +1014,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                 params.bridge_angle = float(surface.bridge_angle);
                 params.preserve_bridge_grid = surface.external_bridge_grid;
                 params.external_bridge_grid = surface.external_bridge_grid;
-                if (params.external_bridge_grid) {
-                    params.external_bridge_grid_infill_wall_overlap = region_config.external_bridge_grid_infill_wall_overlap.value;
-                }
+                if (params.extrusion_role == erInternalBridgeInfill)
+                    params.internal_bridge_infill_wall_overlap = region_config.internal_bridge_infill_wall_overlap.value;
                 if (params.pattern == ipInternalSolidGrid && params.extrusion_role == erSolidInfill) {
                     params.internal_solid_grid_cells_x = region_config.internal_solid_grid_cells_x;
                     params.internal_solid_grid_cells_y = region_config.internal_solid_grid_cells_y;
@@ -1458,18 +1457,6 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
         params.internal_solid_grid_cells_x = surface_fill.params.internal_solid_grid_cells_x;
         params.internal_solid_grid_cells_y = surface_fill.params.internal_solid_grid_cells_y;
         params.internal_solid_grid_angle_step = surface_fill.params.internal_solid_grid_angle_step;
-
-        if (surface_fill.params.external_bridge_grid &&
-            surface_fill.params.external_bridge_grid_infill_wall_overlap > 0.) {
-            ExPolygons expanded;
-            for (const ExPolygon &expoly : surface_fill.expolygons) {
-                Surface cell(surface_fill.surface, expoly);
-                append(expanded, external_bridge_grid_infill_area(
-                    cell, 0.01 * surface_fill.params.external_bridge_grid_infill_wall_overlap,
-                    surface_fill.params.flow.width()));
-            }
-            surface_fill.expolygons = std::move(expanded);
-        }
 
         // Collect internal grid walls before the source expolygons are moved
         // into Surfaces and before the corresponding solid fill is appended.
