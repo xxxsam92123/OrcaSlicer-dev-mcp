@@ -4562,6 +4562,19 @@ const std::set<std::string> ignore_settings_list ={
     "print_settings_id", "filament_settings_id", "printer_settings_id"
 };
 
+// Keys that full_fff_config() deliberately leaves out of the project config (see the filament loop
+// below). A "different from the parent" entry for one of them therefore carries no value anywhere, so a
+// loader that honours it can only drop the restriction the preset inherits from its parent. Keep them out
+// of the filament diff lists as well: see PresetCollection::load_external_preset().
+static const std::set<std::string> project_unsaved_filament_keys = { "compatible_prints", "compatible_printers" };
+
+static void erase_project_unsaved_filament_keys(std::vector<std::string> &keys)
+{
+    keys.erase(std::remove_if(keys.begin(), keys.end(),
+                              [](const std::string &key) { return project_unsaved_filament_keys.count(key) != 0; }),
+               keys.end());
+}
+
 DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optional<std::vector<int>> filament_maps_new, std::optional<std::vector<int>> filament_volume_maps_new) const
 {
     DynamicPrintConfig out;
@@ -4669,6 +4682,7 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optio
         const Preset* filament_parent_preset =  this->filaments.get_selected_preset_parent();
         if (filament_parent_preset) {
             std::vector<std::string> dirty_options = this->filaments.dirty_options_without_option_list(&(this->filaments.get_edited_preset()), filament_parent_preset, ignore_settings_list, false);
+            erase_project_unsaved_filament_keys(dirty_options);
             if (!dirty_options.empty()) {
                 different_filament_settings = Slic3r::escape_strings_cstyle(dirty_options);
             }
@@ -4735,6 +4749,7 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optio
                             ++iter;
                         }
                     }
+                    erase_project_unsaved_filament_keys(dirty_options);
                     different_filament_settings = Slic3r::escape_strings_cstyle(dirty_options);
                 }
             }

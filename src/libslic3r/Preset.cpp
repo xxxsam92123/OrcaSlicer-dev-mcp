@@ -2604,20 +2604,51 @@ std::pair<Preset*, bool> PresetCollection::load_external_preset(
     std::set<std::string> *key_set1 = nullptr, *key_set2 = nullptr;
     Preset::get_extruder_names_and_keysets(m_type, extruder_id_name, extruder_variant_name, &key_set1, &key_set2);
 
-    if (!inherits.empty() && (different_settings_list.size() > 0)) {
+    // "compatible_printers" / "compatible_prints" are not part of the project config for a filament: the
+    // print preset's list travels in the dedicated "print_compatible_printers" key, while the per-filament
+    // lists are meant to be restored from the presets themselves (see PresetBundle::full_fff_config). A
+    // project may still list them as "different from the parent" - those two keys are compared by presence,
+    // not only by value (PresetCollection::dirty_options_without_option_list) - but since a project carries
+    // no value for them, such an entry can only ever discard information: honouring it kept the project's
+    // empty list and dropped the restriction the filament inherits from its parent, so a filament
+    // restricted to a single printer silently became compatible with every printer ("All" in the
+    // Dependencies tab). Filaments only: for a print preset an empty list is meaningful and expressible
+    // (no "print_compatible_printers" entry means an empty list), so its entries must stay untouched.
+    static const std::set<std::string> optional_compat_keys = { "compatible_printers", "compatible_prints" };
+    std::set<std::string>              different_keys      = different_settings_list;
+    std::vector<std::string>           projectless_compat_keys;
+    if (m_type == Preset::TYPE_FILAMENT)
+        for (const std::string &key : optional_compat_keys) {
+            const auto *compat_opt = dynamic_cast<const ConfigOptionStrings *>(combined_config.option(key));
+            if (compat_opt == nullptr || compat_opt->values.empty()) {
+                different_keys.erase(key);
+                projectless_compat_keys.emplace_back(key);
+            }
+        }
+
+    if (!inherits.empty() && (different_keys.size() > 0)) {
         auto iter = this->find_preset_internal(inherits);
         if (iter == m_presets.end() || iter->name != inherits)
             iter = this->find_preset_renamed(inherits);
         if (iter != m_presets.end()) {
             //std::vector<std::string> dirty_options = cfg.diff(iter->config);
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": change preset %1% inherit %2% 's value to %3% 's values")%original_name %inherits %path;
-            cfg.update_non_diff_values_to_base_config(iter->config, keys, different_settings_list, extruder_id_name, extruder_variant_name, *key_set1, *key_set2);
+            cfg.update_non_diff_values_to_base_config(iter->config, keys, different_keys, extruder_id_name, extruder_variant_name, *key_set1, *key_set2);
         }
     }
-    else if (found && it->is_system && (different_settings_list.size() > 0)) {
+    else if (found && it->is_system && (different_keys.size() > 0)) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": change preset %1% 's value to %2% 's values")%original_name %path;
-        cfg.update_non_diff_values_to_base_config(it->config, keys, different_settings_list, extruder_id_name, extruder_variant_name, *key_set1, *key_set2);
+        cfg.update_non_diff_values_to_base_config(it->config, keys, different_keys, extruder_id_name, extruder_variant_name, *key_set1, *key_set2);
     }
+
+    // The project carries no value for the keys collected above, so the preset being loaded keeps its own
+    // value: that preserves both the restriction it inherits from its parent and a list the user saved on
+    // the preset itself, while project values that do exist are applied as before.
+    if (found)
+        for (const std::string &key : projectless_compat_keys)
+            if (const auto *stored_opt = it->config.option<ConfigOptionStrings>(key))
+                if (auto *cfg_opt = cfg.option<ConfigOptionStrings>(key, true))
+                    cfg_opt->set(stored_opt);
 
     //BBS: add config related logs
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" enter, type %1% , path %2%, name %3%, original_name %4%, inherits %5%")%Preset::get_type_string(m_type) %path %name %original_name %inherits;
