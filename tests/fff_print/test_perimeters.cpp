@@ -5,9 +5,14 @@
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/GCodeReader.hpp"
+#include "libslic3r/Model.hpp"
+#include "libslic3r/TriangleMesh.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <string>
 #include <vector>
 
 #include "test_helpers.hpp"
@@ -256,6 +261,7 @@ TEST_CASE("Only one wall on the first layer needs a bottom shell", "[Perimeters]
     // No bottom shell: the option is inert, down to the same walls an unchecked box gives.
     CHECK_THAT(one_wall_no_shell, Catch::Matchers::WithinAbs(plain_no_shell, 1.0));
 }
+
 
 TEST_CASE("Overhang wall overlap changes mixed-surface wall geometry", "[OverhangWallOverlap]")
 {
