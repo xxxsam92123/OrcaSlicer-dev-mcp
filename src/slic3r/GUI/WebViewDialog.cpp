@@ -214,6 +214,7 @@ WebViewPanel::WebViewPanel(wxWindow *parent)
     Bind(wxEVT_CLOSE_WINDOW, &WebViewPanel::OnClose, this);
 
     m_LoginUpdateTimer = nullptr;
+    update_mode();
  }
 
 WebViewPanel::~WebViewPanel()
@@ -411,8 +412,7 @@ void WebViewPanel::OnClose(wxCloseEvent& evt)
 
 void WebViewPanel::OnFreshLoginStatus(wxTimerEvent &event)
 {
-    auto mainframe = Slic3r::GUI::wxGetApp().mainframe;
-    if (mainframe && mainframe->m_webview == this) {
+    if (WebViewPanel::if_built() == this) {
         auto* app_config = Slic3r::GUI::wxGetApp().app_config;
         if (app_config && app_config->get_stealth_mode()) return;
         Slic3r::GUI::wxGetApp().get_login_info(ORCA_CLOUD_PROVIDER);

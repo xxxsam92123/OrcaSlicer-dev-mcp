@@ -6728,7 +6728,7 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("G-code written at the very top of the output file, before any other content. "
                      "Useful for adding metadata that printer firmware reads from the first lines of the file "
                      "(e.g. estimated print time, filament usage). "
-                     "Supports placeholders like {print_time_sec} and {used_filament_length}.");
+                     "Supports placeholders like {print_time_total_sec}, {print_time_day}, {print_time_hour}, {print_time_minute}, {print_time_sec} and {used_filament_length}.");
     def->multiline = true;
     def->full_width = true;
     def->height = 8;
@@ -12465,6 +12465,12 @@ CLIMiscConfigDef::CLIMiscConfigDef()
     def->tooltip = L("If enabled, Arrange will allow rotation when placing objects.");
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("align_to_y_axis", coBool);
+    def->label = L("Align to Y axis when arranging");
+    def->tooltip = L("If enabled, Arrange will turn each object so its long side runs along the Y axis before placing it. "
+                     "When not given, it is on for i3 printers and off for the others, as in the GUI.");
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("avoid_extrusion_cali_region", coBool);
     def->label = L("Avoid extrusion calibrate region when arranging");
     def->tooltip = L("If enabled, Arrange will avoid extrusion calibrate region when placing objects.");
@@ -12677,9 +12683,25 @@ PrintStatisticsConfigDef::PrintStatisticsConfigDef()
     def->label = L("Used filament");
     def->tooltip = L("Total length of filament used in the print.");
 
-    def = this->add("print_time_sec", coString);
-    def->label = L("Print time (seconds)");
+    def = this->add("print_time_total_sec", coString);
+    def->label = L("Print time (total seconds)");
     def->tooltip = L("Total estimated print time in seconds. Replaced with actual value during post-processing.");
+
+    def = this->add("print_time_day", coString);
+    def->label = L("Print time (days component)");
+    def->tooltip = L("Estimated print time day component (normal mode). Replaced with actual value during post-processing.");
+
+    def = this->add("print_time_hour", coString);
+    def->label = L("Print time (hours component)");
+    def->tooltip = L("Estimated print time hour component (normal mode). Replaced with actual value during post-processing.");
+
+    def = this->add("print_time_minute", coString);
+    def->label = L("Print time (minutes component)");
+    def->tooltip = L("Estimated print time minute component (normal mode). Replaced with actual value during post-processing.");
+
+    def = this->add("print_time_sec", coString);
+    def->label = L("Print time (seconds component)");
+    def->tooltip = L("Estimated print time second component (normal mode). Replaced with actual value during post-processing.");
 
     def = this->add("used_filament_length", coString);
     def->label = L("Filament length (meters)");
