@@ -32,16 +32,29 @@ AdaptivePAProcessor::AdaptivePAProcessor(GCode &gcodegen, const std::vector<unsi
       m_pa_change_pattern(R"(; PA_CHANGE:T(\d+) MM3MM:([0-9]*\.[0-9]+) ACCEL:(\d+) BR:(\d+) RC:(\d+) OV:(\d+))"),
       m_g1_f_pattern(R"(G1 F([0-9]+))")
 {
-    // Constructor body can be used for further initialization if necessary
-    for (unsigned int tool : tools_used) {
-        // Only enable model for the tool if both PA and adaptive PA options are enabled
-        if(m_config.adaptive_pressure_advance.get_at(tool) && m_config.enable_pressure_advance.get_at(tool)){
+    // Orca: pressure advance / adaptive PA are per (filament x extruder-variant) options, so the
+    // columns of the expanded arrays are variant slots, not filament ids. Build one interpolator per
+    // variant column; the PA_CHANGE tag below carries that same column index, so process_layer() can
+    // pick the right model without needing a per-layer filament -> column mapping here.
+    std::vector<unsigned int> columns;
+    if (!m_config.filament_extruder_variant.values.empty()) {
+        columns.reserve(m_config.filament_extruder_variant.values.size());
+        for (size_t slot = 0; slot < m_config.filament_extruder_variant.values.size(); ++slot)
+            columns.push_back((unsigned int) slot);
+    } else {
+        // Without a Print attached the filament-indexed arrays stay unexpanded and the filament id is
+        // the only meaningful column (same convention as GCode::get_filament_config_index).
+        columns = tools_used;
+    }
+    for (unsigned int column : columns) {
+        // Only enable model for the column if both PA and adaptive PA options are enabled
+        if(m_config.adaptive_pressure_advance.get_at(column) && m_config.enable_pressure_advance.get_at(column)){
             auto interpolator = std::make_unique<AdaptivePAInterpolator>();
-            // Get calibration values from extruder
-            std::string pa_calibration_values = m_config.adaptive_pressure_advance_model.get_at(tool);
-            // Setup the model and store it in the tool-interpolation model map
+            // Get calibration values from this variant column
+            std::string pa_calibration_values = m_config.adaptive_pressure_advance_model.get_at(column);
+            // Setup the model and store it in the column-interpolation model map
             interpolator->parseAndSetData(pa_calibration_values);
-            m_AdaptivePAInterpolators[tool] = std::move(interpolator);
+            m_AdaptivePAInterpolators[column] = std::move(interpolator);
         }
     }
 }
@@ -108,6 +121,8 @@ std::string AdaptivePAProcessor::process_layer(std::string &&gcode) {
         // the PA for that material is set. As no tag below will be found for this extruder, the original PA is retained.
         if (line.find("; PA_CHANGE") == 0) { // prune lines quickly before running regex check as regex is more expensive to run
             if (std::regex_search(line, m_match, m_pa_change_pattern)) {
+                // Orca: the T value of the PA_CHANGE tag is the (filament x extruder-variant) column,
+                // which is what the pressure advance arrays below are indexed by.
                 int extruder_id = std::stoi(m_match[1].str());
                 mm3mm_value = std::stod(m_match[2].str());
                 accel_value = std::stod(m_match[3].str());
