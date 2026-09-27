@@ -3050,8 +3050,7 @@ Sidebar::Sidebar(Plater *parent)
 
     // add filament content
     p->m_panel_filament_content = new wxScrolledWindow(p->m_filament_area_wrapper, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
-    p->m_panel_filament_content->SetScrollbars(0, 100, 1, 2);
-    p->m_panel_filament_content->SetScrollRate(0, 5);
+    p->m_panel_filament_content->SetScrollRate(0, FromDIP(20));
     //p->m_panel_filament_content->SetMaxSize(wxSize{-1, FromDIP(174)});
     p->m_panel_filament_content->SetBackgroundColour(wxColour(255, 255, 255));
 
@@ -3143,8 +3142,7 @@ Sidebar::Sidebar(Plater *parent)
     // 3) Mixed filament rows, in their own scroll area so a long mixed list does not
     //    push the physical filament list off screen.
     p->m_mixed_scroll_area = new wxScrolledWindow(p->m_filament_area_wrapper, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
-    p->m_mixed_scroll_area->SetScrollbars(0, 100, 1, 2);
-    p->m_mixed_scroll_area->SetScrollRate(0, 5);
+    p->m_mixed_scroll_area->SetScrollRate(0, FromDIP(20));
     p->m_mixed_scroll_area->SetBackgroundColour(StateColor::darkModeColorFor(*wxWHITE));
     {
         auto* mix_scroll_sizer = new wxBoxSizer(wxVERTICAL);
