@@ -4444,8 +4444,8 @@ void TabFilament::build()
             DynamicPrintConfig& filament_config = m_preset_bundle->filaments.get_edited_preset().config;
 
             update_dirty();
-            // Orca: the row is registered per variant, so the callback carries an indexed id
-            // ("adaptive_pressure_advance_model#0"). Compare on the bare key.
+            // Compare on the bare key: a per-variant row reports an indexed id
+            // ("adaptive_pressure_advance_model#0"), while the model row does not.
             const std::string base_key = opt_key.substr(0, opt_key.find('#'));
             if (base_key == "adaptive_pressure_advance_model")
                 m_config_manipulation.check_adaptive_pressure_advance_model(&filament_config);
@@ -4881,7 +4881,7 @@ void TabFilament::toggle_options()
         toggle_option("adaptive_pressure_advance_overhangs", pa, 256 + variant_idx);
         bool has_adaptive_pa = m_config->opt_bool("adaptive_pressure_advance", variant_idx);
         toggle_line("adaptive_pressure_advance_overhangs", has_adaptive_pa && pa, 256 + variant_idx);
-        toggle_line("adaptive_pressure_advance_model", has_adaptive_pa && pa, 256 + variant_idx);
+        toggle_line("adaptive_pressure_advance_model", has_adaptive_pa && pa);
         toggle_line("adaptive_pressure_advance_bridges", has_adaptive_pa && pa, 256 + variant_idx);
 
         bool is_pellet_printer = printer_cfg.opt_bool("pellet_modded_printer");

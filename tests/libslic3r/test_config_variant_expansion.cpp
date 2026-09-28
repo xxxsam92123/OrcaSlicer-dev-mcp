@@ -646,11 +646,13 @@ TEST_CASE("get_index_for_extruder scales the variant column by the requested str
 // both the registration and the resulting per-column expansion.
 TEST_CASE("pressure advance family is stored per filament variant column", "[Config]")
 {
-    SECTION("the whole family is registered for per-variant storage") {
+    SECTION("the family is registered for per-variant storage") {
         for (const char *key : {"enable_pressure_advance", "pressure_advance", "adaptive_pressure_advance",
-                                "adaptive_pressure_advance_overhangs", "adaptive_pressure_advance_bridges",
-                                "adaptive_pressure_advance_model"})
+                                "adaptive_pressure_advance_overhangs", "adaptive_pressure_advance_bridges"})
             REQUIRE(filament_options_with_variant.count(key) == 1);
+        // The model is a single multiline text rather than one number per column, so it stays a
+        // plain filament option: a comma-separated CLI value cannot express one model per column.
+        REQUIRE(filament_options_with_variant.count("adaptive_pressure_advance_model") == 0);
     }
 
     // Two extruders with different nozzle volume types. The filament preset declares four variant
@@ -672,7 +674,8 @@ TEST_CASE("pressure advance family is stored per filament variant column", "[Con
         config.option<ConfigOptionBools>("adaptive_pressure_advance", true)->values = {true, false, true, false};
         config.option<ConfigOptionBools>("adaptive_pressure_advance_overhangs", true)->values = {false, true, false, true};
         config.option<ConfigOptionFloats>("adaptive_pressure_advance_bridges", true)->values = {0.051, 0.062, 0.073, 0.084};
-        config.option<ConfigOptionStrings>("adaptive_pressure_advance_model", true)->values = {"model-a", "model-b", "model-c", "model-d"};
+        // Shared by every column, so a single value that the expansion must leave untouched.
+        config.option<ConfigOptionStrings>("adaptive_pressure_advance_model", true)->values = {"model-a"};
         // Not registered for per-variant storage: the expansion must leave it alone.
         config.option<ConfigOptionFloats>("filament_density", true)->values = {1.24, 1.25, 1.26, 1.27};
         return config;
@@ -695,12 +698,13 @@ TEST_CASE("pressure advance family is stored per filament variant column", "[Con
         // first column, which is exactly the bug this registration fixes.
         REQUIRE(config.option<ConfigOptionFloats>("pressure_advance")->values == std::vector<double>({0.011, 0.044}));
         REQUIRE(config.option<ConfigOptionBools>("enable_pressure_advance")->values == std::vector<unsigned char>({true, false}));
-        // The whole adaptive family must follow the same column, otherwise the adaptive PA gate in
-        // the g-code generator would read a column the filament never prints through.
+        // The adaptive switch, overhangs and bridges follow the same column, otherwise the
+        // adaptive PA gate in the g-code generator would read a column the filament never prints
+        // through. The model is not per column and must be left alone.
         REQUIRE(config.option<ConfigOptionBools>("adaptive_pressure_advance")->values == std::vector<unsigned char>({true, false}));
         REQUIRE(config.option<ConfigOptionBools>("adaptive_pressure_advance_overhangs")->values == std::vector<unsigned char>({false, true}));
         REQUIRE(config.option<ConfigOptionFloats>("adaptive_pressure_advance_bridges")->values == std::vector<double>({0.051, 0.084}));
-        REQUIRE(config.option<ConfigOptionStrings>("adaptive_pressure_advance_model")->values == std::vector<std::string>({"model-a", "model-d"}));
+        REQUIRE(config.option<ConfigOptionStrings>("adaptive_pressure_advance_model")->values == std::vector<std::string>({"model-a"}));
     }
 
     // The g-code generator asks for a filament's variant column, not its extruder ordinal. On this

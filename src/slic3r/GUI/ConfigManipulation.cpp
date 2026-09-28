@@ -174,9 +174,9 @@ void ConfigManipulation::check_adaptive_pressure_advance_model(DynamicPrintConfi
     if (model == nullptr || model->values.empty())
         return;
 
-    // Orca: the model is kept per (filament x extruder variant), so every column is an independent
-    // model. Validating the concatenation instead fuses two columns into one malformed "line" and
-    // warns about a model the user never wrote.
+    // Each element is an independent model, so validate them one at a time. Concatenating first
+    // would fuse two models into a single malformed "line" and warn about a model the user never
+    // wrote. (The model is a plain filament option, shared by every extruder variant.)
     std::string error;
     for (const std::string &column : model->values) {
         if (column.empty())
