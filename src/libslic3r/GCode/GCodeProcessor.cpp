@@ -2294,8 +2294,13 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
         return;
 
     int extruder_id = get_valid_extruder_id(block.last_nozzle_id);
-    float ext_heating_rate = heating_rate[extruder_id];
-    float ext_cooling_rate = cooling_rate[extruder_id];
+    // Same per-extruder metadata caveat as the M632 branch below: the hotend rates default to a
+    // single entry ({2}) while a print may use more extruders, so fall back to the option's
+    // documented default instead of reading past the end.
+    const bool has_extruder_rates = extruder_id >= 0 && extruder_id < static_cast<int>(heating_rate.size()) &&
+                                    extruder_id < static_cast<int>(cooling_rate.size());
+    float ext_heating_rate = has_extruder_rates ? static_cast<float>(heating_rate[extruder_id]) : 2.f;
+    float ext_cooling_rate = has_extruder_rates ? static_cast<float>(cooling_rate[extruder_id]) : 2.f;
 
     auto add_M104_lines = [&](int gcode_id, int target_extruder, int target_temp, int target_filament, bool skippable, int next_filament_idx, int next_nozzle_id, TimeProcessor::InsertLineType type, const std::string& comment = std::string()) {
         auto format_line_M104 = [&](int target_extruder, int target_temp, int target_filament, bool skippable, int next_filament_idx, int next_nozzle_id, const std::string& comment = std::string()) -> std::vector<std::string> {
@@ -2305,7 +2310,11 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
                 std::string m632_line = "M632 S" + std::to_string(next_filament_idx);
                 if (support_dynamic_nozzle_map)
                     m632_line += " H" + std::to_string(next_nozzle_id);
-                if (extruder_max_nozzle_count[target_extruder] > 1)
+                // The per-extruder machine metadata is sized by the printer profile; a config whose
+                // vector is shorter than the extruder count must not read past the end. 1 is the
+                // option's documented default (one nozzle per extruder).
+                if (target_extruder >= 0 && target_extruder < static_cast<int>(extruder_max_nozzle_count.size()) &&
+                    extruder_max_nozzle_count[target_extruder] > 1)
                     m632_line += " N R";
                 m632_line += " W\n";
                 buffer.emplace_back(std::move(m632_line));
@@ -2315,7 +2324,12 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
             if (handle_hotend_as_extruder) {
                 M104_line += (" I" + std::to_string(target_filament == -1 ? next_filament_idx : target_filament));
             } else if (target_extruder != -1) {
-                M104_line += (" T" + std::to_string(physical_extruder_map[target_extruder]));
+                // Same per-extruder metadata as above: the map is sized by the printer profile, so a
+                // config that leaves it shorter than the extruder count must not read past the end.
+                // Out of range -> the extruder id, as physical_extruder_id_for_tool() does.
+                const bool has_physical_map = target_extruder >= 0 && target_extruder < static_cast<int>(physical_extruder_map.size());
+                const int  physical_id      = has_physical_map ? physical_extruder_map[target_extruder] : target_extruder;
+                M104_line += (" T" + std::to_string(physical_id));
             }
 
             M104_line += " S" + std::to_string(target_temp);
