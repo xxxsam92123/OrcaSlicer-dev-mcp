@@ -638,3 +638,124 @@ TEST_CASE("get_index_for_extruder scales the variant column by the requested str
     REQUIRE(col0_stride2 == 0);
     REQUIRE(col1_stride2 == 2);
 }
+
+
+// The pressure advance family is a per (filament x extruder-variant) option: registering it in
+// filament_options_with_variant is what lets the GUI keep one value per variant tab and lets the
+// g-code generator read the column the active filament actually prints through. These cases pin
+// both the registration and the resulting per-column expansion.
+TEST_CASE("pressure advance family is stored per filament variant column", "[Config]")
+{
+    SECTION("the family is registered for per-variant storage") {
+        for (const char *key : {"enable_pressure_advance", "pressure_advance", "adaptive_pressure_advance",
+                                "adaptive_pressure_advance_overhangs", "adaptive_pressure_advance_bridges"})
+            REQUIRE(filament_options_with_variant.count(key) == 1);
+        // The model is a single multiline text rather than one number per column, so it stays a
+        // plain filament option: a comma-separated CLI value cannot express one model per column.
+        REQUIRE(filament_options_with_variant.count("adaptive_pressure_advance_model") == 0);
+    }
+
+    // Two extruders with different nozzle volume types. The filament preset declares four variant
+    // columns (one per extruder x volume type), each carrying its own pressure advance value.
+    auto make_four_column_config = []() {
+        DynamicPrintConfig config;
+        config.option<ConfigOptionEnumsGeneric>("extruder_type", true)->values = {etDirectDrive, etDirectDrive};
+        config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type", true)->values = {nvtStandard, nvtHighFlow};
+        config.option<ConfigOptionStrings>("extruder_variant_list", true)->values = {"Direct Drive Standard,Direct Drive High Flow",
+                                                                                     "Direct Drive Standard,Direct Drive High Flow"};
+        config.option<ConfigOptionInts>("filament_self_index", true)->values = {1, 1, 2, 2};
+        config.option<ConfigOptionStrings>("filament_extruder_variant", true)->values = {"Direct Drive Standard", "Direct Drive High Flow",
+                                                                                         "Direct Drive Standard", "Direct Drive High Flow"};
+        config.option<ConfigOptionInts>("filament_map", true)->values = {1, 2};
+        config.option<ConfigOptionFloats>("pressure_advance", true)->values = {0.011, 0.022, 0.033, 0.044};
+        config.option<ConfigOptionBools>("enable_pressure_advance", true)->values = {true, true, true, false};
+        // The rest of the family is per-variant too - each column carries its own value so the
+        // assertions below cannot pass by accident on a shared value.
+        config.option<ConfigOptionBools>("adaptive_pressure_advance", true)->values = {true, false, true, false};
+        config.option<ConfigOptionBools>("adaptive_pressure_advance_overhangs", true)->values = {false, true, false, true};
+        config.option<ConfigOptionFloats>("adaptive_pressure_advance_bridges", true)->values = {0.051, 0.062, 0.073, 0.084};
+        // Shared by every column, so a single value that the expansion must leave untouched.
+        config.option<ConfigOptionStrings>("adaptive_pressure_advance_model", true)->values = {"model-a"};
+        // Not registered for per-variant storage: the expansion must leave it alone.
+        config.option<ConfigOptionFloats>("filament_density", true)->values = {1.24, 1.25, 1.26, 1.27};
+        return config;
+    };
+
+    SECTION("each filament keeps the column of the variant it prints through") {
+        DynamicPrintConfig config = make_four_column_config();
+
+        std::vector<std::vector<NozzleVolumeType>> nozzle_volume_types;
+        int extruder_count = 2;
+        int count = config.get_extruder_nozzle_volume_count(extruder_count, nozzle_volume_types);
+
+        std::set<std::string> filament_keys = filament_options_with_variant;
+        filament_keys.insert("filament_self_index");
+        config.update_values_to_printer_extruders_for_multiple_filaments(config, extruder_count, count,
+            filament_keys, "filament_self_index", "filament_extruder_variant");
+
+        // filament 1 prints on extruder 1 (Standard) -> column 0; filament 2 prints on extruder 2
+        // (High Flow) -> column 3. Each slot must keep its own value instead of collapsing to the
+        // first column, which is exactly the bug this registration fixes.
+        REQUIRE(config.option<ConfigOptionFloats>("pressure_advance")->values == std::vector<double>({0.011, 0.044}));
+        REQUIRE(config.option<ConfigOptionBools>("enable_pressure_advance")->values == std::vector<unsigned char>({true, false}));
+        // The adaptive switch, overhangs and bridges follow the same column, otherwise the
+        // adaptive PA gate in the g-code generator would read a column the filament never prints
+        // through. The model is not per column and must be left alone.
+        REQUIRE(config.option<ConfigOptionBools>("adaptive_pressure_advance")->values == std::vector<unsigned char>({true, false}));
+        REQUIRE(config.option<ConfigOptionBools>("adaptive_pressure_advance_overhangs")->values == std::vector<unsigned char>({false, true}));
+        REQUIRE(config.option<ConfigOptionFloats>("adaptive_pressure_advance_bridges")->values == std::vector<double>({0.051, 0.084}));
+        REQUIRE(config.option<ConfigOptionStrings>("adaptive_pressure_advance_model")->values == std::vector<std::string>({"model-a"}));
+    }
+
+    // The g-code generator asks for a filament's variant column, not its extruder ordinal. On this
+    // two-extruder, two-variants-each machine those are different numbers: filament 2 prints through
+    // extruder 2 (ordinal 1) but its High Flow column sits at index 3. Reading the ordinal instead
+    // would silently pick the wrong pressure advance.
+    SECTION("a filament resolves to its variant column, not to its extruder ordinal") {
+        DynamicPrintConfig config = make_four_column_config();
+
+        REQUIRE(config.get_index_for_extruder(1, "filament_self_index", etDirectDrive, nvtStandard,
+                                              "filament_extruder_variant") == 0);
+        REQUIRE(config.get_index_for_extruder(2, "filament_self_index", etDirectDrive, nvtHighFlow,
+                                              "filament_extruder_variant") == 3);
+    }
+
+    SECTION("a key that is not per-variant is left untouched") {
+        DynamicPrintConfig config = make_four_column_config();
+
+        std::vector<std::vector<NozzleVolumeType>> nozzle_volume_types;
+        int extruder_count = 2;
+        int count = config.get_extruder_nozzle_volume_count(extruder_count, nozzle_volume_types);
+
+        std::set<std::string> filament_keys = filament_options_with_variant;
+        filament_keys.insert("filament_self_index");
+        config.update_values_to_printer_extruders_for_multiple_filaments(config, extruder_count, count,
+            filament_keys, "filament_self_index", "filament_extruder_variant");
+
+        REQUIRE(config.option<ConfigOptionFloats>("filament_density")->values == std::vector<double>({1.24, 1.25, 1.26, 1.27}));
+    }
+
+    SECTION("a single-extruder single-variant printer is unchanged") {
+        DynamicPrintConfig config;
+        config.option<ConfigOptionEnumsGeneric>("extruder_type", true)->values = {etDirectDrive};
+        config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type", true)->values = {nvtStandard};
+        config.option<ConfigOptionStrings>("extruder_variant_list", true)->values = {"Direct Drive Standard"};
+        config.option<ConfigOptionInts>("filament_self_index", true)->values = {1};
+        config.option<ConfigOptionStrings>("filament_extruder_variant", true)->values = {"Direct Drive Standard"};
+        config.option<ConfigOptionInts>("filament_map", true)->values = {1};
+        config.option<ConfigOptionFloats>("pressure_advance", true)->values = {0.035};
+        config.option<ConfigOptionBools>("enable_pressure_advance", true)->values = {true};
+
+        std::vector<std::vector<NozzleVolumeType>> nozzle_volume_types;
+        int extruder_count = 1;
+        int count = config.get_extruder_nozzle_volume_count(extruder_count, nozzle_volume_types);
+
+        std::set<std::string> filament_keys = filament_options_with_variant;
+        filament_keys.insert("filament_self_index");
+        config.update_values_to_printer_extruders_for_multiple_filaments(config, extruder_count, count,
+            filament_keys, "filament_self_index", "filament_extruder_variant");
+
+        REQUIRE(config.option<ConfigOptionFloats>("pressure_advance")->values == std::vector<double>({0.035}));
+        REQUIRE(config.option<ConfigOptionBools>("enable_pressure_advance")->values == std::vector<unsigned char>({true}));
+    }
+}

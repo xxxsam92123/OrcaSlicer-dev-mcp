@@ -16856,9 +16856,15 @@ void Plater::calib_input_shaping_freq(const Calib_Params& params)
         set_config_values<double, ConfigOptionFloatsNullable>(print_config, "default_jerk", 0);
     }
 
-    if (!filament_config->option<ConfigOptionBools>("enable_pressure_advance")->get_at(0)) {
+    // Orca: pressure advance is stored per (filament x extruder variant). Treat the row as enabled if
+    // any variant column has it on, so seeding the row below cannot wipe a column that is in use.
+    const auto *pa_enabled_opt = filament_config->option<ConfigOptionBools>("enable_pressure_advance");
+    const bool pa_row_enabled = pa_enabled_opt &&
+        std::any_of(pa_enabled_opt->values.cbegin(), pa_enabled_opt->values.cend(),
+                    [](unsigned char v) { return v != 0; });
+    if (!pa_row_enabled) {
         set_config_values<bool, ConfigOptionBools>(filament_config, "enable_pressure_advance", true);
-        set_config_values<double, ConfigOptionFloatsNullable>(filament_config, "pressure_advance", 0.0);
+        set_config_values<double, ConfigOptionFloats>(filament_config, "pressure_advance", 0.0);
         set_config_values<bool, ConfigOptionBools>(filament_config, "adaptive_pressure_advance", false);
     }
 
@@ -16922,9 +16928,15 @@ void Plater::calib_input_shaping_damp(const Calib_Params& params)
         set_config_values<double, ConfigOptionFloatsNullable>(print_config, "default_jerk", 0);
     }
 
-    if (!filament_config->option<ConfigOptionBools>("enable_pressure_advance")->get_at(0)) {
+    // Orca: pressure advance is stored per (filament x extruder variant). Treat the row as enabled if
+    // any variant column has it on, so seeding the row below cannot wipe a column that is in use.
+    const auto *pa_enabled_opt = filament_config->option<ConfigOptionBools>("enable_pressure_advance");
+    const bool pa_row_enabled = pa_enabled_opt &&
+        std::any_of(pa_enabled_opt->values.cbegin(), pa_enabled_opt->values.cend(),
+                    [](unsigned char v) { return v != 0; });
+    if (!pa_row_enabled) {
         set_config_values<bool, ConfigOptionBools>(filament_config, "enable_pressure_advance", true);
-        set_config_values<double, ConfigOptionFloatsNullable>(filament_config, "pressure_advance", 0.0);
+        set_config_values<double, ConfigOptionFloats>(filament_config, "pressure_advance", 0.0);
         set_config_values<bool, ConfigOptionBools>(filament_config, "adaptive_pressure_advance", false);
     }
 
@@ -16988,9 +17000,15 @@ void Plater::Calib_Cornering(const Calib_Params& params)
         set_config_values<double, ConfigOptionFloatsNullable>(print_config, "default_jerk", 0);
     }
 
-    if (!filament_config->option<ConfigOptionBools>("enable_pressure_advance")->get_at(0)) {
+    // Orca: pressure advance is stored per (filament x extruder variant). Treat the row as enabled if
+    // any variant column has it on, so seeding the row below cannot wipe a column that is in use.
+    const auto *pa_enabled_opt = filament_config->option<ConfigOptionBools>("enable_pressure_advance");
+    const bool pa_row_enabled = pa_enabled_opt &&
+        std::any_of(pa_enabled_opt->values.cbegin(), pa_enabled_opt->values.cend(),
+                    [](unsigned char v) { return v != 0; });
+    if (!pa_row_enabled) {
         set_config_values<bool, ConfigOptionBools>(filament_config, "enable_pressure_advance", true);
-        set_config_values<double, ConfigOptionFloatsNullable>(filament_config, "pressure_advance", 0.0);
+        set_config_values<double, ConfigOptionFloats>(filament_config, "pressure_advance", 0.0);
         set_config_values<bool, ConfigOptionBools>(filament_config, "adaptive_pressure_advance", false);
     }
 

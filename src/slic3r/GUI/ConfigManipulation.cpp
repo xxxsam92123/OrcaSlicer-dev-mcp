@@ -174,11 +174,18 @@ void ConfigManipulation::check_adaptive_pressure_advance_model(DynamicPrintConfi
     if (model == nullptr || model->values.empty())
         return;
 
-    std::string raw_model;
-    for (const std::string& chunk : model->values)
-        raw_model += chunk;
+    // Each element is an independent model, so validate them one at a time. Concatenating first
+    // would fuse two models into a single malformed "line" and warn about a model the user never
+    // wrote. (The model is a plain filament option, shared by every extruder variant.)
+    std::string error;
+    for (const std::string &column : model->values) {
+        if (column.empty())
+            continue;
+        error = AdaptivePAProcessor::validate_adaptive_pa_model(column);
+        if (!error.empty())
+            break;
+    }
 
-    std::string error = AdaptivePAProcessor::validate_adaptive_pa_model(raw_model);
     if (!error.empty()) {
         wxString msg_text = _L("Adaptive Pressure Advance model validation failed:\n");
         msg_text += from_u8(error);

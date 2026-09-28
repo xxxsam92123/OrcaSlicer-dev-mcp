@@ -9536,6 +9536,16 @@ std::set<std::string> print_options_with_variant = {
 
 std::set<std::string> filament_options_with_variant = {
     "filament_flow_ratio",
+    // Orca: per-extruder-variant pressure advance family (Direct Drive / Bowden x Standard / High Flow)
+    "enable_pressure_advance",
+    "pressure_advance",
+    "adaptive_pressure_advance",
+    "adaptive_pressure_advance_overhangs",
+    "adaptive_pressure_advance_bridges",
+    // The model is a single multiline text, not a per-column number: a comma-separated CLI
+    // value cannot express one model per variant column (ConfigOptionStrings::deserialize does
+    // not split on commas), so it stays a plain filament option. The switch and the other
+    // adaptive PA settings above are still per column.
     "filament_max_volumetric_speed",
     // Per-variant ramming / pre-cooling / nozzle-change filament overrides
     "filament_ramming_volumetric_speed",
