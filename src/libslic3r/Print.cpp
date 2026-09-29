@@ -2439,16 +2439,18 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
             if (m_default_region_config.precise_outer_wall && m_default_region_config.wall_sequence != WallSequence::InnerOuter)
                 warn(L("The precise wall option will be ignored for outer-inner or inner-outer-inner wall sequences."), "precise_outer_wall");
 
-            // check adaptive pressure advance model
-            // Orca: the PA family is stored per (filament x extruder variant), so walk the variant
-            // columns instead of indexing the arrays by the filament ordinal. The model itself is a
-            // single multiline text shared by every column, so it has no column of its own.
-            const size_t pa_slots = m_config.enable_pressure_advance.values.size();
-            for (size_t pa_slot = 0; pa_slot < pa_slots; ++pa_slot) {
-                if (m_config.adaptive_pressure_advance.get_at(pa_slot) &&
-                    m_config.enable_pressure_advance.get_at(pa_slot)) {
+            // check adaptive pressure advance model of every extruder variant column of the used filaments
+            const std::vector<int> &self_index = m_config.filament_self_index.values;
+            const size_t pa_columns = std::max(m_config.adaptive_pressure_advance_model.size(), size_t(extruders.back()) + 1);
+            for (size_t column = 0; column < pa_columns; ++column) {
+                // filament_self_index maps a column to its filament once the filament arrays hold one column per variant
+                const unsigned int filament_id = self_index.size() == pa_columns ? self_index[column] - 1 : column;
+                if (!std::binary_search(extruders.begin(), extruders.end(), filament_id))
+                    continue;
+                if (m_config.adaptive_pressure_advance.get_at(column) &&
+                    m_config.enable_pressure_advance.get_at(column)) {
 
-                    const std::string pa_model = m_config.adaptive_pressure_advance_model.get_at(pa_slot);
+                    const std::string pa_model = m_config.adaptive_pressure_advance_model.get_at(column);
                     if (!pa_model.empty()) {
                         std::string validation_error = AdaptivePAProcessor::validate_adaptive_pa_model(pa_model);
                         if (!validation_error.empty()) {

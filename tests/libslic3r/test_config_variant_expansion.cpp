@@ -727,11 +727,9 @@ TEST_CASE("pressure advance family is stored per filament variant column", "[Con
 {
     SECTION("the family is registered for per-variant storage") {
         for (const char *key : {"enable_pressure_advance", "pressure_advance", "adaptive_pressure_advance",
-                                "adaptive_pressure_advance_overhangs", "adaptive_pressure_advance_bridges"})
+                                "adaptive_pressure_advance_overhangs", "adaptive_pressure_advance_bridges",
+                                "adaptive_pressure_advance_model"})
             REQUIRE(filament_options_with_variant.count(key) == 1);
-        // The model is a single multiline text rather than one number per column, so it stays a
-        // plain filament option: a comma-separated CLI value cannot express one model per column.
-        REQUIRE(filament_options_with_variant.count("adaptive_pressure_advance_model") == 0);
     }
 
     // Two extruders with different nozzle volume types. The filament preset declares four variant
@@ -753,7 +751,8 @@ TEST_CASE("pressure advance family is stored per filament variant column", "[Con
         config.option<ConfigOptionBools>("adaptive_pressure_advance", true)->values = {true, false, true, false};
         config.option<ConfigOptionBools>("adaptive_pressure_advance_overhangs", true)->values = {false, true, false, true};
         config.option<ConfigOptionFloats>("adaptive_pressure_advance_bridges", true)->values = {0.051, 0.062, 0.073, 0.084};
-        // Shared by every column, so a single value that the expansion must leave untouched.
+        // One model for both filaments: the expansion gives every filament variant of a filament
+        // that filament's model.
         config.option<ConfigOptionStrings>("adaptive_pressure_advance_model", true)->values = {"model-a"};
         // Not registered for per-variant storage: the expansion must leave it alone.
         config.option<ConfigOptionFloats>("filament_density", true)->values = {1.24, 1.25, 1.26, 1.27};
@@ -779,11 +778,12 @@ TEST_CASE("pressure advance family is stored per filament variant column", "[Con
         REQUIRE(config.option<ConfigOptionBools>("enable_pressure_advance")->values == std::vector<unsigned char>({true, false}));
         // The adaptive switch, overhangs and bridges follow the same column, otherwise the
         // adaptive PA gate in the g-code generator would read a column the filament never prints
-        // through. The model is not per column and must be left alone.
+        // through. The model is per filament as well: the single model above is given to both
+        // filaments, and each column reads the model of its own filament.
         REQUIRE(config.option<ConfigOptionBools>("adaptive_pressure_advance")->values == std::vector<unsigned char>({true, false}));
         REQUIRE(config.option<ConfigOptionBools>("adaptive_pressure_advance_overhangs")->values == std::vector<unsigned char>({false, true}));
         REQUIRE(config.option<ConfigOptionFloats>("adaptive_pressure_advance_bridges")->values == std::vector<double>({0.051, 0.084}));
-        REQUIRE(config.option<ConfigOptionStrings>("adaptive_pressure_advance_model")->values == std::vector<std::string>({"model-a"}));
+        REQUIRE(config.option<ConfigOptionStrings>("adaptive_pressure_advance_model")->values == std::vector<std::string>({"model-a", "model-a"}));
     }
 
     // The g-code generator asks for a filament's variant column, not its extruder ordinal. On this
@@ -837,4 +837,16 @@ TEST_CASE("pressure advance family is stored per filament variant column", "[Con
         REQUIRE(config.option<ConfigOptionFloats>("pressure_advance")->values == std::vector<double>({0.035}));
         REQUIRE(config.option<ConfigOptionBools>("enable_pressure_advance")->values == std::vector<unsigned char>({true}));
     }
+}
+
+// A per-variant filament option read with a single value gives it to every filament variant. A project
+// exported by an older CLI holds a single value for an option no loaded preset defined, such as
+// filament_ironing_flow.
+TEST_CASE("A per-variant filament option read with a single value gives it to every filament variant", "[Config]")
+{
+    // filament 1 defines Standard and High Flow, filament 2 Standard
+    DynamicPrintConfig config;
+    config.option<ConfigOptionInts>("filament_self_index", true)->values = {1, 1, 2};
+    config.load_from_ini_string("pressure_advance = 0.021", ForwardCompatibilitySubstitutionRule::Disable);
+    REQUIRE(config.option<ConfigOptionFloats>("pressure_advance")->values == std::vector<double>({0.021, 0.021, 0.021}));
 }
