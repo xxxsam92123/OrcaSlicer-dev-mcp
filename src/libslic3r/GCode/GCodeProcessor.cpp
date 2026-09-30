@@ -82,6 +82,51 @@ static bool is_bbl_machine_command_tool(const std::string_view command, int tool
     return is_bbl_machine_command_tool(tool_number);
 }
 
+// Whether a temperature command's T<n> addresses a *physical hotend* rather than a logical extruder.
+// The emission side picks physical ids only when the printer exposes more than one, i.e. when
+// physical_extruder_map is not uniform; the preview has to resolve the target with the same rule, or
+// it attributes one hotend's temperature command to another. (Local mirror of the emission-side
+// predicate, kept here until a shared header provides it.)
+static bool temperature_ids_address_physical_hotends(const std::vector<int>& physical_extruder_map)
+{
+    if (physical_extruder_map.empty())
+        return false;
+
+    for (int physical_extruder : physical_extruder_map)
+        if (physical_extruder != physical_extruder_map.front())
+            return true;
+
+    return false;
+}
+
+// Temperature slots are addressed by hotend id, which is not guaranteed to be a 0..n-1 permutation,
+// so the table has to cover the largest id in use. The non-mapped path also addresses
+// filament/extruder slots, so those counts are a lower bound too.
+static size_t temperature_slot_count(size_t filament_count, size_t nozzle_count, const std::vector<int>& physical_extruder_map)
+{
+    size_t count = std::max(filament_count, nozzle_count);
+    for (int physical_extruder : physical_extruder_map)
+        if (physical_extruder >= 0)
+            count = std::max(count, static_cast<size_t>(physical_extruder) + 1);
+    return count;
+}
+
+// Whether a temperature command addresses every hotend. Bambu writes the *valueless* form
+// (`M104 S140 A`, in the H2D/H2D Pro/A2L/P2S start templates) to mean "every hotend", while other
+// dialects use A as a *valued* parameter (Snapmaker U1 ships `M104 S0 T0 A0`), where it must not
+// swallow the T target. So: valueless A, or a non-zero valued A, means every hotend.
+static bool targets_every_hotend(const GCodeReader::GCodeLine& line)
+{
+    if (!line.has('A'))
+        return false;
+
+    float a;
+    // The member has_value(char, float&) reports a valueless parameter as present-with-0 (its strtod
+    // path lacks the "consumed a digit" check that the string_view overload has), so go through the
+    // static overload, which only matches when a number was really parsed.
+    return !GCodeReader::GCodeLine::has_value(line.axis_pos('A'), a) || a != 0.f;
+}
+
 const std::vector<std::string> GCodeProcessor::Reserved_Tags = {
     " FEATURE: ",
     " WIPE_START",
@@ -3106,7 +3151,8 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
     m_result.filament_densities.resize(filament_count);
     m_result.filament_vitrification_temperature.resize(filament_count);
     m_result.filament_costs.resize(filament_count);
-    m_extruder_temps.resize(filament_count);
+    const size_t slot_count = temperature_slot_count(filament_count, m_nozzle_diameter.size(), m_physical_extruder_map);
+    m_extruder_temps.resize(std::max(m_extruder_temps.size(), slot_count), 0.0f);
     m_filament_nozzle_temp.resize(filament_count);
     m_filament_nozzle_temp_first_layer.resize(filament_count);
     m_result.nozzle_hrc = static_cast<int>(config.nozzle_hrc.getInt());
@@ -3409,6 +3455,7 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
 
     const ConfigOptionPoints* extruder_offset = config.option<ConfigOptionPoints>("extruder_offset");
     const ConfigOptionBool* single_extruder_multi_material = config.option<ConfigOptionBool>("single_extruder_multi_material");
+    m_single_extruder_multi_material = single_extruder_multi_material != nullptr && single_extruder_multi_material->value;
     if (extruder_offset != nullptr) {
         //BBS: for single extruder multi material, only use the offset of first extruder
         if (single_extruder_multi_material != nullptr && single_extruder_multi_material->getBool()) {
@@ -3459,7 +3506,8 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
         m_extruder_colors[i] = static_cast<unsigned char>(i);
     }
 
-    m_extruder_temps.resize(m_result.filaments_count);
+    const size_t slot_count = temperature_slot_count(m_result.filaments_count, m_nozzle_diameter.size(), m_physical_extruder_map);
+    m_extruder_temps.resize(std::max(m_extruder_temps.size(), slot_count), 0.0f);
 
     const ConfigOptionFloat* machine_load_filament_time = config.option<ConfigOptionFloat>("machine_load_filament_time");
     if (machine_load_filament_time != nullptr)
@@ -3660,6 +3708,7 @@ void GCodeProcessor::reset()
     m_filament_id = std::vector<unsigned char>(MAXIMUM_EXTRUDER_NUMBER, static_cast<unsigned char>(-1));
     m_last_filament_id = std::vector<unsigned char>(MAXIMUM_EXTRUDER_NUMBER, static_cast<unsigned char>(-1));
     m_extruder_id = static_cast<unsigned char>(-1);
+    m_single_extruder_multi_material = false;
     // clear the multi-nozzle occupancy tracker between slices (the richer hotend-change model's only
     // mutable state). Inert for the single-nozzle fleet (never populated).
     m_nozzle_status_recorder = MultiNozzleUtils::NozzleStatusRecorder{};
@@ -6233,10 +6282,22 @@ void GCodeProcessor::process_M83(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_M104(const GCodeReader::GCodeLine& line)
 {
-    int filament_id = get_filament_id();
     float new_temp;
-    if (line.has_value('S', new_temp))
-        m_extruder_temps[filament_id] = new_temp;
+    if (!line.has_value('S', new_temp))
+        return;
+
+    if (targets_every_hotend(line)) {
+        std::fill(m_extruder_temps.begin(), m_extruder_temps.end(), new_temp);
+        return;
+    }
+
+    float target_extruder;
+    if (line.has_value('T', target_extruder))
+        // Clamp before the float -> int conversion: an out-of-range T value is undefined behaviour and
+        // would otherwise reach the setter as an arbitrary index.
+        set_hotend_temperature(static_cast<int>(std::clamp(target_extruder, -1.0f, 254.0f)), new_temp);
+    else
+        set_hotend_temperature(get_temperature_target_id_for_extruder(get_extruder_id()), new_temp);
 }
 
 void GCodeProcessor::process_VM104(const GCodeReader::GCodeLine& line)
@@ -6310,20 +6371,20 @@ void GCodeProcessor::process_M108(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_M109(const GCodeReader::GCodeLine& line)
 {
-    int filament_id = get_filament_id();
     float new_temp;
-    if (line.has_value('R', new_temp)) {
-        float val;
-        if (line.has_value('T', val)) {
-            size_t eid = static_cast<size_t>(val);
-            if (eid < m_extruder_temps.size())
-                m_extruder_temps[eid] = new_temp;
-        }
-        else
-            m_extruder_temps[filament_id] = new_temp;
+    if (!line.has_value('R', new_temp) && !line.has_value('S', new_temp))
+        return;
+
+    if (targets_every_hotend(line)) {
+        std::fill(m_extruder_temps.begin(), m_extruder_temps.end(), new_temp);
+        return;
     }
-    else if (line.has_value('S', new_temp))
-        m_extruder_temps[filament_id] = new_temp;
+
+    float target_extruder;
+    if (line.has_value('T', target_extruder))
+        set_hotend_temperature(static_cast<int>(std::clamp(target_extruder, -1.0f, 254.0f)), new_temp);
+    else
+        set_hotend_temperature(get_temperature_target_id_for_extruder(get_extruder_id()), new_temp);
 }
 
 void GCodeProcessor::process_VM109(const GCodeReader::GCodeLine& line)
@@ -7141,6 +7202,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     const bool has_y = delta_y > 0.0f;
     const bool has_z = delta_z > 0.0f;
     const bool has_e = delta_e > 0.0f;
+    const float temperature = hotend_temperature(get_temperature_target_id_for_extruder(get_extruder_id()));
     const float move_acceleration =
         (type == EMoveType::Travel) ? get_travel_acceleration(normal_mode) :
         ((type == EMoveType::Retract || type == EMoveType::Unretract) ? get_retract_acceleration(normal_mode) :
@@ -7187,7 +7249,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         m_mm3_per_mm,
         m_travel_dist,
         m_fan_speed,
-        m_extruder_temps[filament_id],
+        temperature,
 // ORCA: Add Pressure Advance visualization support
         m_pressure_advance,
         // ORCA: Add Acceleration visualization support
@@ -7818,6 +7880,32 @@ int GCodeProcessor::get_extruder_id(bool force_initialize)const
     if (m_extruder_id == (unsigned char)(-1))
         return force_initialize ? 0 : -1;
     return static_cast<int>(m_extruder_id);
+}
+
+int GCodeProcessor::get_temperature_target_id_for_extruder(int extruder_id) const
+{
+    if (extruder_id < 0)
+        return -1;
+
+    if (m_single_extruder_multi_material && temperature_ids_address_physical_hotends(m_physical_extruder_map) &&
+        extruder_id < static_cast<int>(m_physical_extruder_map.size()))
+        return m_physical_extruder_map[extruder_id];
+
+    return extruder_id;
+}
+
+bool GCodeProcessor::set_hotend_temperature(int slot, float temperature)
+{
+    if (slot < 0 || static_cast<size_t>(slot) >= m_extruder_temps.size())
+        return false;
+
+    m_extruder_temps[slot] = temperature;
+    return true;
+}
+
+float GCodeProcessor::hotend_temperature(int slot) const
+{
+    return slot >= 0 && static_cast<size_t>(slot) < m_extruder_temps.size() ? m_extruder_temps[slot] : 0.0f;
 }
 
 } /* namespace Slic3r */
