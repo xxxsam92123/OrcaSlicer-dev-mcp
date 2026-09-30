@@ -277,19 +277,6 @@ static WebViewRef *webview_ref(wxWebView *webView)
     return webView ? static_cast<WebViewRef *>(webView->GetRefData()) : nullptr;
 }
 
-wxString WebView::BuildResourceUrl(std::string const &resource_path, bool append_language)
-{
-    wxFileName resource_file(Slic3r::GUI::from_u8((boost::filesystem::path(Slic3r::resources_dir()) / resource_path).make_preferred().string()));
-    resource_file.MakeAbsolute();
-
-    wxString target_url = wxFileSystem::FileNameToURL(resource_file);
-    if (append_language) {
-        const wxString language = Slic3r::GUI::wxGetApp().current_language_code_safe();
-        if (!language.empty())
-            target_url += wxT("?lang=") + language;
-    }
-    return target_url;
-}
 
 wxWebView* WebView::CreateWebView(wxWindow * parent, wxString const & url)
 {

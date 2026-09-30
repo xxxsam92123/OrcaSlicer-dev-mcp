@@ -12,7 +12,6 @@ class WebView
 {
 public:
     static wxWebView *CreateWebView(wxWindow *parent, wxString const &url);
-    static wxString BuildResourceUrl(std::string const &resource_path, bool append_language);
 #if wxUSE_WEBVIEW_EDGE
     static bool CheckWebViewRuntime();
     static bool DownloadAndInstallWebViewRuntime();

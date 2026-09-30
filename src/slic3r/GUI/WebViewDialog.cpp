@@ -36,7 +36,10 @@ namespace GUI {
 WebViewPanel::WebViewPanel(wxWindow *parent)
         : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
  {
-    const wxString url = WebView::BuildResourceUrl("web/homepage/index.html", true);
+    wxString url = file_url_from_path(boost::filesystem::path(resources_dir()) / "web/homepage/index.html");
+    wxString strlang = wxGetApp().current_language_code_safe();
+    if (strlang != "")
+        url += "?lang=" + strlang;
 
     wxBoxSizer* topsizer = new wxBoxSizer(wxVERTICAL);
     
