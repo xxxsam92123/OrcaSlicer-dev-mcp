@@ -8,6 +8,7 @@
 #include "../include/Types.hpp"
 
 #include <cfloat>
+#include <vector>
 
 namespace libvgcode {
 
@@ -59,11 +60,12 @@ public:
     //
     const std::array<float, 2>& get_range() const;
     //
-    // Return the values corresponding to the detected color bins of this ColorRange.
-    // The size of the returned vector can be:
-    // 1                    - If only one value was detected while setting up this ColorRange.
-    // 2                    - If only two values were detected while setting up this ColorRange.
-    // get_palette().size() - If more than two distinct values were detected while setting up this ColorRange.
+    // Return the values detected while setting up this ColorRange, in increasing order, so that a
+    // legend built from them names the values the data really used (temperatures, speeds, ...)
+    // instead of evenly spaced samples of [min, max] that the print never used.
+    // The size of the returned vector is the number of distinct values detected, up to MAX_VALUES.
+    // Past that, and when no value was detected at all, it is get_palette().size() evenly spaced
+    // samples of the range instead.
     //
     std::vector<float> get_values() const;
     //
@@ -85,9 +87,16 @@ private:
     //
     std::array<float, 2> m_range{ FLT_MAX, -FLT_MAX };
     //
-    // Count of different values passed to update()
-    // 
-    std::size_t m_count{ 0 };
+    // The distinct values passed to update(), in increasing order. Callers pass already binned
+    // values, so these are the values the data really used. Collection stops once more than
+    // MAX_VALUES distinct values have been seen: past that a legend listing them would be
+    // unreadable, and get_values() falls back to evenly spaced samples of the range.
+    //
+    std::vector<float> m_values;
+    //
+    // Largest number of distinct values a legend can list.
+    //
+    static constexpr std::size_t MAX_VALUES{ 16 };
 
     //
     // Use the passed value to update the range.
