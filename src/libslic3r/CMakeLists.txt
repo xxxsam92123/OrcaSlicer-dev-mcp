@@ -310,6 +310,8 @@ set(lisbslic3r_sources
     Geometry/VoronoiVisualUtils.hpp
     ExternalBridgeGrid.cpp
     ExternalBridgeGrid.hpp
+    InstanceLock.cpp
+    InstanceLock.hpp
     InternalSolidGrid.cpp
     InternalSolidGrid.hpp
     Int128.hpp
