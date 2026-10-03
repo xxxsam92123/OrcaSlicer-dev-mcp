@@ -4682,7 +4682,7 @@ static void record_filament_compat_lists(size_t index, const DynamicPrintConfig 
                                          std::vector<std::string> &deviating_keys,
                                          std::vector<std::string> &compatible_printers, std::vector<std::string> &compatible_prints)
 {
-    if (index >= compatible_printers.size())
+    if (index >= compatible_printers.size() || index >= compatible_prints.size())
         return;
     const std::pair<const char *, std::vector<std::string> *> lists[] = {
         { "compatible_printers", &compatible_printers },
@@ -5034,8 +5034,13 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optio
     //BBS: add logic for settings check between different system presets
     add_if_some_non_empty(std::move(different_settings),            "different_settings_to_system");
     add_if_some_non_empty(std::move(print_compatible_printers),     "print_compatible_printers");
-    add_if_some_non_empty(std::move(filament_compatible_printers),  "filament_compatible_printers");
-    add_if_some_non_empty(std::move(filament_compatible_prints),    "filament_compatible_prints");
+    // Unlike the keys above, these two are written even when every entry is empty: a filament whose list
+    // the user cleared ("All") is a value the project owns, and the loader tells that apart from "this
+    // project does not touch the filament" by the presence of the key - see apply_filament_compat_lists().
+    if (num_filaments > 0) {
+        out.set_key_value("filament_compatible_printers", new ConfigOptionStrings(std::move(filament_compatible_printers)));
+        out.set_key_value("filament_compatible_prints",   new ConfigOptionStrings(std::move(filament_compatible_prints)));
+    }
     out.option<ConfigOptionStrings>("extruder_ams_count", true)->values   = save_extruder_ams_count_to_string(this->extruder_ams_counts);
 
 	out.option<ConfigOptionEnumGeneric>("printer_technology", true)->value = ptFFF;
@@ -5279,13 +5284,13 @@ static void convert_filament_preset_name(std::string& machine_name, std::string&
         }
     }
 }
-// Distribute the per-filament compatibility lists a project carries (see full_fff_config) into the config
-// the filament preset is loaded from. A non-empty recorded list - and an empty one next to a
-// "different_settings_to_system" entry for the same key, which is how a project records that the user
-// cleared the list ("All") - makes the project the owner of that list: apply it and mark the key as
-// differing from the parent, so that PresetCollection::load_external_preset() keeps it instead of the
-// parent preset's. Anything else - a project saved before those keys existed, or a filament this project
-// does not touch - leaves the key out of the set, so the preset keeps the list it has.
+// Distribute the per-filament compatibility lists a project carries into the config the filament preset is
+// loaded from, and mark the ones the project owns in the "different" set, so that
+// PresetCollection::load_external_preset() keeps them instead of the parent preset's. A recorded non-empty
+// list is owned by itself; a recorded empty list ("All") is owned only where the project also lists the key
+// as differing from the parent. A key the project has nothing for - an older project, or a filament this
+// project does not touch - is dropped from the set, so the preset keeps its own list. See
+// full_fff_config() for what a project records.
 static void apply_filament_compat_lists(const std::vector<std::string> &compatible_printers, const std::vector<std::string> &compatible_prints,
                                         size_t index, DynamicPrintConfig &config, std::set<std::string> &different_keys)
 {

@@ -5753,11 +5753,74 @@ TEST_CASE("Project config records the filament's compatibility lists per filamen
     const auto *diff = full.option<ConfigOptionStrings>("different_settings_to_system");
     REQUIRE(diff != nullptr);
     REQUIRE(diff->values.size() >= 2);
+    std::vector<std::string> diff_keys;
+    Slic3r::unescape_strings_cstyle(diff->values[1], diff_keys);
     // The real difference from the parent is still recorded...
-    CHECK(diff->values[1].find("nozzle_temperature") != std::string::npos);
+    CHECK(std::find(diff_keys.begin(), diff_keys.end(), "nozzle_temperature") != diff_keys.end());
     // ...while the two compatibility lists are carried by the keys above, not by the entry.
-    CHECK(diff->values[1].find("compatible_printers") == std::string::npos);
-    CHECK(diff->values[1].find("compatible_prints") == std::string::npos);
+    CHECK(std::find(diff_keys.begin(), diff_keys.end(), "compatible_printers") == diff_keys.end());
+    CHECK(std::find(diff_keys.begin(), diff_keys.end(), "compatible_prints") == diff_keys.end());
+}
+
+// A list the user cleared has no value to carry, so the writer has to emit the key anyway: the reader tells
+// "every printer" from "this project does not touch the filament" by the presence of the key plus the entry.
+// Exercised as the real round trip: what full_config() writes is what load_config_model() reads back.
+TEST_CASE("A cleared compatibility list survives saving and reloading the project", "[Preset][Bundle]")
+{
+    auto install = [](PresetBundle &bundle) {
+        Preset &parent = add_inmemory_preset(bundle.filaments, "Parent ABS");
+        parent.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+        Preset &child = add_inmemory_preset(bundle.filaments, "Child ABS", "Parent ABS");
+        child.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+        bundle.filament_presets = { "Child ABS" };
+    };
+
+    PresetBundle saved_from;
+    install(saved_from);
+    REQUIRE(saved_from.filaments.select_preset_by_name("Child ABS", true));
+    // What the user does in the Dependencies tab: clear the list, i.e. allow every printer.
+    saved_from.filaments.get_edited_preset().config.option<ConfigOptionStrings>("compatible_printers", true)->values.clear();
+
+    DynamicPrintConfig project = saved_from.full_config(false);
+    const auto *recorded = project.option<ConfigOptionStrings>("filament_compatible_printers");
+    REQUIRE(recorded != nullptr);
+    REQUIRE(recorded->values.size() == 1);
+    CHECK(recorded->values[0].empty());
+
+    PresetBundle reopened;
+    install(reopened);
+    reopened.load_config_model("test.3mf", std::move(project));
+
+    const Preset &edited = reopened.filaments.get_edited_preset();
+    REQUIRE(edited.config.option<ConfigOptionStrings>("compatible_printers") != nullptr);
+    CHECK(edited.config.option<ConfigOptionStrings>("compatible_printers")->values.empty());
+}
+
+// The preset the project names is not always installed: opening such a project on another machine leaves
+// the parent preset as the base, and the project's list must still win there.
+TEST_CASE("A project's compatibility list survives when only the parent preset is installed", "[Preset][Bundle]")
+{
+    PresetBundle saved_from;
+    Preset &parent = add_inmemory_preset(saved_from.filaments, "Parent ABS");
+    parent.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    Preset &child = add_inmemory_preset(saved_from.filaments, "Child ABS", "Parent ABS");
+    child.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    saved_from.filament_presets = { "Child ABS" };
+    REQUIRE(saved_from.filaments.select_preset_by_name("Child ABS", true));
+    saved_from.filaments.get_edited_preset().config.option<ConfigOptionStrings>("compatible_printers", true)->values =
+        { "Parent Printer", "Printer B" };
+
+    DynamicPrintConfig project = saved_from.full_config(false);
+
+    // The receiving machine only knows the parent preset.
+    PresetBundle reopened;
+    Preset &local_parent = add_inmemory_preset(reopened.filaments, "Parent ABS");
+    local_parent.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    reopened.load_config_model("test.3mf", std::move(project));
+
+    const Preset &edited = reopened.filaments.get_edited_preset();
+    REQUIRE(edited.config.option<ConfigOptionStrings>("compatible_printers") != nullptr);
+    CHECK(edited.config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{ "Parent Printer", "Printer B" });
 }
 
 // The point of recording them: a compatibility change made with the Dependencies tab has to survive saving

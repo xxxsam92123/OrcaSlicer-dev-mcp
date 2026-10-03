@@ -2676,17 +2676,13 @@ std::pair<Preset*, bool> PresetCollection::load_external_preset(
     std::set<std::string> *key_set1 = nullptr, *key_set2 = nullptr;
     Preset::get_extruder_names_and_keysets(m_type, extruder_id_name, extruder_variant_name, &key_set1, &key_set2);
 
-    // "compatible_printers" / "compatible_prints" hold a list of printers/processes, so a project cannot
-    // store them in its flattened config: it carries them in the dedicated "filament_compatible_printers" /
-    // "filament_compatible_prints" keys, and says who owns the list through the "different" set of keys -
-    // see PresetBundle::apply_filament_compat_lists(). A key missing from that set is one the project has
-    // no value for: either a project saved before those keys existed (where an entry in
-    // "different_settings_to_system" can only discard information - honouring it kept the project's empty
-    // list and dropped the restriction the filament inherits from its parent, so a filament restricted to a
-    // single printer silently became compatible with every printer, "All" in the Dependencies tab), or a
-    // filament this project does not touch. Both keep the list the preset has. Filaments only: for a print
-    // preset an empty list is meaningful and expressible (no "print_compatible_printers" entry means an
-    // empty list), so its entries must stay untouched.
+    // "compatible_printers" / "compatible_prints" hold a list of printers/processes each, so a project
+    // carries them in its own keys and tells the loader who owns the list through the "different" set - see
+    // PresetBundle::apply_filament_compat_lists(). A key missing from that set is one the project has no
+    // value for (an older project, or a filament this project does not touch): honouring its entry would
+    // only drop the restriction the filament has, which is what turned a single-printer filament into
+    // "All" in the Dependencies tab. Filaments only: for a print preset an empty list is meaningful and
+    // expressible (no "print_compatible_printers" entry means an empty list), so its entries stay untouched.
     static const std::set<std::string> optional_compat_keys = { "compatible_printers", "compatible_prints" };
     std::set<std::string>              different_keys      = different_settings_list;
     std::vector<std::string>           projectless_compat_keys;
@@ -2764,8 +2760,9 @@ std::pair<Preset*, bool> PresetCollection::load_external_preset(
         if (it == m_presets.end() || it->name != inherits)
             it = this->find_preset_renamed(inherits);
         found = it != m_presets.end();
-        if (found && profile_print_params_same(it->config, cfg)) {
-            // The system preset exists and it matches the values stored inside config.
+        if (found && ! project_owns_compat && profile_print_params_same(it->config, cfg)) {
+            // The system preset exists and it matches the values stored inside config. (A project that
+            // carries this filament's compatibility lists is not a match: see project_owns_compat above.)
             if (select == LoadAndSelect::Always)
                 this->select_preset(it - m_presets.begin());
             //BBS: set the preset to visible
