@@ -2125,6 +2125,19 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionStrings());
     def->cli = ConfigOptionDef::nocli;
 
+    // Per-filament compatibility lists of a project. "compatible_printers" / "compatible_prints" hold a
+    // list each, so they cannot be flattened into the project config one-value-per-filament the way the
+    // other filament options are (see PresetBundle::full_fff_config); a project carries them here instead,
+    // one escaped list per filament, the way "print_compatible_printers" carries the print preset's list
+    // for the whole project.
+    def = this->add("filament_compatible_printers", coStrings);
+    def->set_default_value(new ConfigOptionStrings());
+    def->cli = ConfigOptionDef::nocli;
+
+    def = this->add("filament_compatible_prints", coStrings);
+    def->set_default_value(new ConfigOptionStrings());
+    def->cli = ConfigOptionDef::nocli;
+
     def = this->add("print_sequence", coEnum);
     def->label = L("Print sequence");
     def->tooltip = L("This determines the print sequence, allowing you to print layer-by-layer or object-by-object.");
