@@ -1,0 +1,167 @@
+name: Nightly builds
+
+# Fork-owned nightly: builds Windows x64 and publishes it to the prerelease
+# `nightly-builds`, using the upstream nightly asset names.
+#
+# The build itself is the upstream reusable workflow chain
+# (build_check_cache.yml -> build_deps.yml / build_orca.yml), used unchanged, so
+# this file stays the only fork-owned piece and upstream syncs never conflict
+# with it.
+#
+# build_orca.yml's own deploy-nightly steps are gated on
+# `github.repository == 'OrcaSlicer/OrcaSlicer'`, so they skip in this fork: the
+# publish job below is the only publisher.
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # 02:00 Asia/Shanghai (UTC+8)
+  workflow_dispatch:
+
+# The repository default is read-only; publishing a release needs write.
+permissions:
+  contents: read # the build jobs only check the repository out
+  actions: write  # the reused build workflow prunes its own compiler cache
+
+concurrency:
+  group: ${{ github.workflow }}
+  # A nightly that is already building must finish and publish; the next one
+  # supersedes it only once it starts.
+  cancel-in-progress: false
+
+jobs:
+  check_build_script:
+    name: Windows build script tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          lfs: 'false'
+
+      # Windows PowerShell rather than pwsh, as in build_all.yml: the suite
+      # drives build_win.bat through cmd, and the two differ in how they quote
+      # native arguments.
+      - name: Run the build script test suite
+        shell: powershell
+        run: .\scripts\test_build_win.ps1
+
+  build_windows_x64:
+    name: Build Windows x64
+    needs: check_build_script
+    uses: ./.github/workflows/build_check_cache.yml
+    with:
+      os: windows-latest
+      arch: x64
+      compiler: clang
+      build-deps-only: false
+      # Dependencies are unchanged most nights and their cache key already covers
+      # anything that would change them, so reuse the cache instead of forcing a
+      # rebuild the way build_all.yml does on its own schedule.
+      force-build: false
+    secrets: inherit
+
+  publish_nightly:
+    name: Publish nightly release
+    needs: build_windows_x64
+    if: ${{ !cancelled() && needs.build_windows_x64.result == 'success' }}
+    runs-on: ubuntu-latest
+    # Job-level permissions replace the workflow-level block: publishing needs
+    # write access to the release, and nothing else.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: nightly-builds
+    steps:
+      - name: Download the Windows build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          # `OrcaSlicer_Windows_V*` keeps the MSIX Store package out: it goes to
+          # Partner Center, not to the nightly release.
+          pattern: 'OrcaSlicer_Windows_V*'
+          path: artifacts
+
+      - name: Download the profile validator artifact
+        uses: actions/download-artifact@v8
+        with:
+          pattern: 'OrcaSlicer_profile_validator_Windows_V*'
+          path: artifacts
+
+      - name: Assemble the nightly assets
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+
+          # download-artifact unpacks each artifact into a folder named after it,
+          # so the files inside are already extracted. CPack bakes the arch into
+          # the installer name (…_x64.exe).
+
+          # mapfile rather than `find … | head -1`: with `set -o pipefail` a
+          # `head` that closes the pipe early would fail the pipeline.
+          mapfile -t installers < <(find artifacts -type f -name 'OrcaSlicer_Windows_Installer_*_x64.exe')
+          if [ ${#installers[@]} -eq 0 ]; then
+            echo "::error::Windows installer artifact not found."
+            exit 1
+          fi
+          cp -v "${installers[0]}" upload/OrcaSlicer_Windows_Installer_x64_nightly.exe
+
+          mapfile -t validators < <(find artifacts -type f -name 'OrcaSlicer_profile_validator.exe')
+          if [ ${#validators[@]} -eq 0 ]; then
+            echo "::warning::Profile validator artifact not found; publishing without it."
+          else
+            cp -v "${validators[0]}" upload/OrcaSlicer_profile_validator_Windows_nightly.exe
+          fi
+
+          # The portable build is uploaded as an unpacked folder; re-zip it, as
+          # publish_release.yml does for the official releases.
+          mapfile -t portable_dirs < <(find artifacts -maxdepth 1 -type d -name 'OrcaSlicer_Windows_*_x64_portable')
+          if [ ${#portable_dirs[@]} -eq 0 ]; then
+            echo "::error::Windows portable artifact not found."
+            exit 1
+          fi
+          ( cd "${portable_dirs[0]}" && zip -qr "$GITHUB_WORKSPACE/upload/OrcaSlicer_Windows_x64_nightly_portable.zip" . )
+
+          echo "Assets to publish:"
+          ls -lh upload
+
+      - name: Publish to the nightly release
+        run: |
+          set -euo pipefail
+
+          cat > notes.md <<EOF
+          Automated nightly build of the Windows x64 portable package and installer.
+
+          - Commit: \`$GITHUB_SHA\`
+          - Built: $(date -u +'%Y-%m-%d %H:%M UTC')
+          - Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+
+          Unsigned development build of this fork's \`main\`, republished every
+          night. Windows may warn about an unknown publisher — use at your own risk.
+          EOF
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --notes-file notes.md
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "OrcaSlicer Nightly Builds" --target main --notes-file notes.md
+          fi
+
+          gh release upload "$TAG" upload/* --repo "$GITHUB_REPOSITORY" --clobber
+
+      # Upstream force-moves the `nightly-builds` tag onto every night's commit,
+      # so the release's "Source code" archives belong to that night. The assets
+      # are already published at this point, so a failure here is cosmetic and
+      # must not fail the run.
+      - name: Move the nightly tag onto this build's commit
+        continue-on-error: true
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" \
+            -f sha="$SHA" -F force=true --jq '"nightly-builds -> \(.object.sha)"'
+
+      - name: Verify the published release
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease,url,assets \
+            --jq '"\(.tagName) draft=\(.isDraft) prerelease=\(.isPrerelease) \(.url)", (.assets[] | "  \(.name)  \(.size) bytes  updated=\(.updatedAt)")'
