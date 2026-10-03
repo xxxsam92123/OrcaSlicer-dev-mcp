@@ -5034,12 +5034,36 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optio
     //BBS: add logic for settings check between different system presets
     add_if_some_non_empty(std::move(different_settings),            "different_settings_to_system");
     add_if_some_non_empty(std::move(print_compatible_printers),     "print_compatible_printers");
-    // Unlike the keys above, these two are written even when every entry is empty: a filament whose list
-    // the user cleared ("All") is a value the project owns, and the loader tells that apart from "this
-    // project does not touch the filament" by the presence of the key - see apply_filament_compat_lists().
-    if (num_filaments > 0) {
+
+    // One escaped list per filament, empty entries included: a cleared list ("All") is a value the project
+    // owns, and apply_filament_compat_lists() tells it apart from "this project does not touch the filament"
+    // by the filament's "different from the parent" entry read below. The keys are written only when the
+    // project owns something, so a project that never touched the lists stays free of them - a build that
+    // does not know them parses the project config with ForwardCompatibilitySubstitutionRule::Disable (see
+    // _extract_project_config_from_archive()) and would otherwise fail to load it.
+    bool carries_filament_lists = false;
+    if (const auto *entries = out.option<ConfigOptionStrings>("different_settings_to_system"))
+        for (const std::string &entry : entries->values) {
+            std::vector<std::string> keys;
+            Slic3r::unescape_strings_cstyle(entry, keys);
+            for (const std::string &key : project_filament_compat_keys)
+                if (std::find(keys.begin(), keys.end(), key) != keys.end())
+                    carries_filament_lists = true;
+        }
+    carries_filament_lists = carries_filament_lists ||
+        std::any_of(filament_compatible_printers.begin(), filament_compatible_printers.end(),
+                    [](const std::string &list) { return ! list.empty(); }) ||
+        std::any_of(filament_compatible_prints.begin(), filament_compatible_prints.end(),
+                    [](const std::string &list) { return ! list.empty(); });
+    if (carries_filament_lists && num_filaments > 0) {
         out.set_key_value("filament_compatible_printers", new ConfigOptionStrings(std::move(filament_compatible_printers)));
         out.set_key_value("filament_compatible_prints",   new ConfigOptionStrings(std::move(filament_compatible_prints)));
+    } else {
+        // Removed rather than left empty: every key the config holds is serialized into the project, and the
+        // whole point of not carrying them in this project is that a build which does not know them can still
+        // read it.
+        out.erase("filament_compatible_printers");
+        out.erase("filament_compatible_prints");
     }
     out.option<ConfigOptionStrings>("extruder_ams_count", true)->values   = save_extruder_ams_count_to_string(this->extruder_ams_counts);
 

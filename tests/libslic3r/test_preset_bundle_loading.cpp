@@ -5762,6 +5762,75 @@ TEST_CASE("Project config records the filament's compatibility lists per filamen
     CHECK(std::find(diff_keys.begin(), diff_keys.end(), "compatible_prints") == diff_keys.end());
 }
 
+// A project that never touches a compatibility list must not carry the two keys at all: a build that does not
+// know them parses the project config with ForwardCompatibilitySubstitutionRule::Disable, so carrying them
+// would cost that project its settings on every older build.
+TEST_CASE("A project that touches no compatibility list carries neither key", "[Preset][Bundle]")
+{
+    PresetBundle bundle;
+
+    Preset &parent = add_inmemory_preset(bundle.filaments, "Parent ABS");
+    parent.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    Preset &child = add_inmemory_preset(bundle.filaments, "Child ABS", "Parent ABS");
+    child.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    bundle.filament_presets = { "Child ABS" };
+    REQUIRE(bundle.filaments.select_preset_by_name("Child ABS", true));
+
+    const DynamicPrintConfig full = bundle.full_config(false);
+    CHECK(full.option<ConfigOptionStrings>("filament_compatible_printers") == nullptr);
+    CHECK(full.option<ConfigOptionStrings>("filament_compatible_prints") == nullptr);
+}
+
+// The recorded lists are indexed by filament, so a project with two filaments has to give each one its own
+// list back: only the second filament's entry records the change made in the Dependencies tab.
+TEST_CASE("A two-filament project carries each filament's compatibility list separately", "[Preset][Bundle]")
+{
+    auto install = [](PresetBundle &bundle) {
+        Preset &parent = add_inmemory_preset(bundle.filaments, "Parent ABS");
+        parent.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+        Preset &first = add_inmemory_preset(bundle.filaments, "First ABS", "Parent ABS");
+        first.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+        Preset &second = add_inmemory_preset(bundle.filaments, "Second ABS", "Parent ABS");
+        second.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+        bundle.filament_presets = { "First ABS", "Second ABS" };
+    };
+
+    PresetBundle saved_from;
+    install(saved_from);
+    REQUIRE(saved_from.filaments.select_preset_by_name("Second ABS", true));
+    // The second filament is allowed every printer in this project; the first one is left alone.
+    saved_from.filaments.get_edited_preset().config.option<ConfigOptionStrings>("compatible_printers", true)->values.clear();
+
+    DynamicPrintConfig project = saved_from.full_config(false);
+    const auto *recorded = project.option<ConfigOptionStrings>("filament_compatible_printers");
+    REQUIRE(recorded != nullptr);
+    REQUIRE(recorded->values.size() == 2);
+    CHECK(recorded->values[0].empty());
+    CHECK(recorded->values[1].empty());
+
+    const auto *diff = project.option<ConfigOptionStrings>("different_settings_to_system");
+    REQUIRE(diff != nullptr);
+    REQUIRE(diff->values.size() >= 3);
+    std::vector<std::string> first_keys, second_keys;
+    Slic3r::unescape_strings_cstyle(diff->values[1], first_keys);
+    Slic3r::unescape_strings_cstyle(diff->values[2], second_keys);
+    CHECK(std::find(first_keys.begin(), first_keys.end(), "compatible_printers") == first_keys.end());
+    CHECK(std::find(second_keys.begin(), second_keys.end(), "compatible_printers") != second_keys.end());
+
+    PresetBundle reopened;
+    install(reopened);
+    reopened.load_config_model("test.3mf", std::move(project));
+
+    // Neither filament's own preset is rewritten: the first one was not touched, the second one's project
+    // copy carries the cleared list.
+    const Preset *first = reopened.filaments.find_preset("First ABS", false, true);
+    REQUIRE(first != nullptr);
+    CHECK(first->config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{ "Parent Printer" });
+    const Preset *second = reopened.filaments.find_preset("Second ABS", false, true);
+    REQUIRE(second != nullptr);
+    CHECK(second->config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{ "Parent Printer" });
+}
+
 // A list the user cleared has no value to carry, so the writer has to emit the key anyway: the reader tells
 // "every printer" from "this project does not touch the filament" by the presence of the key plus the entry.
 // Exercised as the real round trip: what full_config() writes is what load_config_model() reads back.

@@ -2855,7 +2855,9 @@ std::pair<Preset*, bool> PresetCollection::load_external_preset(
             // Unique profile name. Insert a new profile.
             break;
         if (profile_print_params_same(it->config, cfg)) {
-            // The preset exists and it matches the values stored inside config.
+            // Deliberately not gated on project_owns_compat like the reuse checks above: only a preset whose
+            // generated name ("<preset>(<file>)") was created for this very project can match here, so its
+            // lists already are this project's. Reusing it keeps loading a project idempotent.
             if (select == LoadAndSelect::Always)
                 this->select_preset(it - m_presets.begin());
             //BBS: add config related logs
