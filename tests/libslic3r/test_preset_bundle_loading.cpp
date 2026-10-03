@@ -5712,10 +5712,12 @@ TEST_CASE("Loading a project keeps the filament's inherited compatible printers"
     CHECK(stored->config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{ "Parent Printer" });
 }
 
-// The other half of the same contract: because the project config never stores these two keys, an entry
-// for them in the filament's different_settings_to_system is an entry no loader can honour - and builds
-// that do honour it drop the preset's restriction on reload. Keep them out of the project.
-TEST_CASE("Project config does not record the filament's compatibility lists", "[Preset][Bundle]")
+// The other half of the same contract: a project cannot flatten the two lists into its config - they hold
+// lists, not one value per filament - so it records them per filament in "filament_compatible_printers" /
+// "filament_compatible_prints" for the filaments that deviate from their parent. Their
+// "different_settings_to_system" entry then only repeats that value and stays free of the two keys, which
+// keeps a reader that only knows the entry from discarding the list.
+TEST_CASE("Project config records the filament's compatibility lists per filament", "[Preset][Bundle]")
 {
     PresetBundle bundle;
 
@@ -5733,14 +5735,167 @@ TEST_CASE("Project config does not record the filament's compatibility lists", "
     REQUIRE(bundle.filaments.select_preset_by_name("Child ABS", true));
 
     const DynamicPrintConfig full = bundle.full_config(false);
+
+    // Both lists are recorded, one entry per filament, as the lists they are.
+    const auto *recorded_printers = full.option<ConfigOptionStrings>("filament_compatible_printers");
+    REQUIRE(recorded_printers != nullptr);
+    REQUIRE(recorded_printers->values.size() == 1);
+    std::vector<std::string> printers;
+    Slic3r::unescape_strings_cstyle(recorded_printers->values[0], printers);
+    CHECK(printers == std::vector<std::string>{ "Printer A", "Printer B" });
+    const auto *recorded_prints = full.option<ConfigOptionStrings>("filament_compatible_prints");
+    REQUIRE(recorded_prints != nullptr);
+    REQUIRE(recorded_prints->values.size() == 1);
+    std::vector<std::string> prints;
+    Slic3r::unescape_strings_cstyle(recorded_prints->values[0], prints);
+    CHECK(prints == std::vector<std::string>{ "Print A", "Print B" });
+
     const auto *diff = full.option<ConfigOptionStrings>("different_settings_to_system");
     REQUIRE(diff != nullptr);
     REQUIRE(diff->values.size() >= 2);
     // The real difference from the parent is still recorded...
     CHECK(diff->values[1].find("nozzle_temperature") != std::string::npos);
-    // ...while the two compatibility lists are left out, as the project cannot store their value.
+    // ...while the two compatibility lists are carried by the keys above, not by the entry.
     CHECK(diff->values[1].find("compatible_printers") == std::string::npos);
     CHECK(diff->values[1].find("compatible_prints") == std::string::npos);
+}
+
+// The point of recording them: a compatibility change made with the Dependencies tab has to survive saving
+// and reopening the project, even though the user never saved it on the filament preset.
+TEST_CASE("Loading a project applies the compatibility lists the project recorded", "[Preset][Bundle]")
+{
+    PresetBundle bundle;
+
+    Preset &parent = add_inmemory_preset(bundle.filaments, "Parent ABS");
+    parent.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    parent.config.option<ConfigOptionStrings>("compatible_prints", true)->values   = { "Parent Print" };
+
+    Preset &child = add_inmemory_preset(bundle.filaments, "Child ABS", "Parent ABS");
+    child.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    child.config.option<ConfigOptionStrings>("compatible_prints", true)->values   = { "Parent Print" };
+    bundle.filament_presets = { "Child ABS" };
+
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.opt<ConfigOptionFloats>("filament_diameter")->values             = { 1.75 };
+    config.opt<ConfigOptionInts>("filament_self_index")->values             = { 1 };
+    config.opt<ConfigOptionStrings>("filament_extruder_variant")->values    = { "Direct Drive Standard" };
+    config.opt<ConfigOptionStrings>("filament_colour")->values              = { "#FF0000" };
+    config.opt<ConfigOptionStrings>("filament_type")->values                = { "ABS" };
+    config.option<ConfigOptionString>("print_settings_id", true)->value     = "Project Print";
+    config.option<ConfigOptionString>("printer_settings_id", true)->value   = "Project Printer";
+    config.option<ConfigOptionStrings>("filament_settings_id", true)->values = { "Child ABS" };
+    config.option<ConfigOptionStrings>("inherits_group", true)->values      = { "", "Parent ABS", "" };
+    // What the user ticked in the Dependencies tab: one printer and one process more than the parent.
+    // Canonical escaped form, as full_fff_config() writes it (names with spaces are quoted).
+    config.option<ConfigOptionStrings>("filament_compatible_printers", true)->values = { "\"Parent Printer\";\"Printer B\"" };
+    config.option<ConfigOptionStrings>("filament_compatible_prints", true)->values   = { "\"Parent Print\";\"Print B\"" };
+    config.option<ConfigOptionStrings>("different_settings_to_system", true)->values  = { "", "", "" };
+
+    bundle.load_config_model("test.3mf", std::move(config));
+
+    const Preset &edited = bundle.filaments.get_edited_preset();
+    REQUIRE(edited.name == "Child ABS");
+    REQUIRE(edited.config.option<ConfigOptionStrings>("compatible_printers") != nullptr);
+    CHECK(edited.config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{ "Parent Printer", "Printer B" });
+    REQUIRE(edited.config.option<ConfigOptionStrings>("compatible_prints") != nullptr);
+    CHECK(edited.config.option<ConfigOptionStrings>("compatible_prints")->values == std::vector<std::string>{ "Parent Print", "Print B" });
+    // The preset the project was built from is untouched: the project owns the change, not the library.
+    const Preset *stored = bundle.filaments.find_preset("Child ABS", false, true);
+    REQUIRE(stored != nullptr);
+    CHECK(stored->config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{ "Parent Printer" });
+}
+
+// A project that records no list for a filament ("All" in the Dependencies tab) makes the project the owner
+// of the empty list: the entry in "different_settings_to_system" is what records it, since an empty list
+// has no value to carry.
+TEST_CASE("Loading a project applies the empty compatibility list it recorded for the filament", "[Preset][Bundle]")
+{
+    PresetBundle bundle;
+
+    Preset &parent = add_inmemory_preset(bundle.filaments, "Parent ABS");
+    parent.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+
+    Preset &child = add_inmemory_preset(bundle.filaments, "Child ABS", "Parent ABS");
+    child.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    bundle.filament_presets = { "Child ABS" };
+
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.opt<ConfigOptionFloats>("filament_diameter")->values             = { 1.75 };
+    config.opt<ConfigOptionInts>("filament_self_index")->values             = { 1 };
+    config.opt<ConfigOptionStrings>("filament_extruder_variant")->values    = { "Direct Drive Standard" };
+    config.opt<ConfigOptionStrings>("filament_colour")->values              = { "#FF0000" };
+    config.opt<ConfigOptionStrings>("filament_type")->values                = { "ABS" };
+    config.option<ConfigOptionString>("print_settings_id", true)->value     = "Project Print";
+    config.option<ConfigOptionString>("printer_settings_id", true)->value   = "Project Printer";
+    config.option<ConfigOptionStrings>("filament_settings_id", true)->values = { "Child ABS" };
+    config.option<ConfigOptionStrings>("inherits_group", true)->values      = { "", "Parent ABS", "" };
+    config.option<ConfigOptionStrings>("filament_compatible_printers", true)->values = { "" };
+    config.option<ConfigOptionStrings>("different_settings_to_system", true)->values  = { "", "compatible_printers", "" };
+
+    bundle.load_config_model("test.3mf", std::move(config));
+
+    const Preset &edited = bundle.filaments.get_edited_preset();
+    REQUIRE(edited.name == "Child ABS");
+    REQUIRE(edited.config.option<ConfigOptionStrings>("compatible_printers") != nullptr);
+    CHECK(edited.config.option<ConfigOptionStrings>("compatible_printers")->values.empty());
+}
+
+// A filament that does not inherit from anything has no parent preset: the project has to compare it
+// against what it holds itself, which is exactly the change the user made in the Dependencies tab.
+TEST_CASE("Project config records the compatibility list a parentless filament changed", "[Preset][Bundle]")
+{
+    PresetBundle bundle;
+
+    Preset &standalone = add_inmemory_preset(bundle.filaments, "Standalone ABS");
+    standalone.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Printer A" };
+    bundle.filament_presets = { "Standalone ABS" };
+    REQUIRE(bundle.filaments.select_preset_by_name("Standalone ABS", true));
+
+    // What the user ticked for this project: one printer more than the preset carries.
+    bundle.filaments.get_edited_preset().config.option<ConfigOptionStrings>("compatible_printers", true)->values =
+        { "Printer A", "Printer B" };
+
+    const DynamicPrintConfig full = bundle.full_config(false);
+    const auto *recorded = full.option<ConfigOptionStrings>("filament_compatible_printers");
+    REQUIRE(recorded != nullptr);
+    REQUIRE(recorded->values.size() == 1);
+    std::vector<std::string> printers;
+    Slic3r::unescape_strings_cstyle(recorded->values[0], printers);
+    CHECK(printers == std::vector<std::string>{ "Printer A", "Printer B" });
+}
+
+// The other side of that: a project that carries the per-filament keys but records nothing for this
+// filament leaves its list alone, so a filament keeps the restriction it inherits from its parent.
+TEST_CASE("A filament a project records nothing for keeps its inherited compatible printers", "[Preset][Bundle]")
+{
+    PresetBundle bundle;
+
+    Preset &parent = add_inmemory_preset(bundle.filaments, "Parent ABS");
+    parent.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+
+    Preset &child = add_inmemory_preset(bundle.filaments, "Child ABS", "Parent ABS");
+    child.config.option<ConfigOptionStrings>("compatible_printers", true)->values = { "Parent Printer" };
+    bundle.filament_presets = { "Child ABS" };
+
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.opt<ConfigOptionFloats>("filament_diameter")->values             = { 1.75 };
+    config.opt<ConfigOptionInts>("filament_self_index")->values             = { 1 };
+    config.opt<ConfigOptionStrings>("filament_extruder_variant")->values    = { "Direct Drive Standard" };
+    config.opt<ConfigOptionStrings>("filament_colour")->values              = { "#FF0000" };
+    config.opt<ConfigOptionStrings>("filament_type")->values                = { "ABS" };
+    config.option<ConfigOptionString>("print_settings_id", true)->value     = "Project Print";
+    config.option<ConfigOptionString>("printer_settings_id", true)->value   = "Project Printer";
+    config.option<ConfigOptionStrings>("filament_settings_id", true)->values = { "Child ABS" };
+    config.option<ConfigOptionStrings>("inherits_group", true)->values      = { "", "Parent ABS", "" };
+    config.option<ConfigOptionStrings>("filament_compatible_printers", true)->values = { "" };
+    config.option<ConfigOptionStrings>("different_settings_to_system", true)->values  = { "", "nozzle_temperature", "" };
+
+    bundle.load_config_model("test.3mf", std::move(config));
+
+    const Preset &edited = bundle.filaments.get_edited_preset();
+    REQUIRE(edited.name == "Child ABS");
+    REQUIRE(edited.config.option<ConfigOptionStrings>("compatible_printers") != nullptr);
+    CHECK(edited.config.option<ConfigOptionStrings>("compatible_printers")->values == std::vector<std::string>{ "Parent Printer" });
 }
 
 // A project saved before a key joined filament_options_with_variant stores it once per filament,
