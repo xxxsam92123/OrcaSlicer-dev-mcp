@@ -118,6 +118,7 @@
 #include "NotificationManager.hpp"
 #include "MarkdownTip.hpp"
 #include "NetworkTestDialog.hpp"
+#include "SceneBenchmark.hpp"
 #include "ConfigWizard.hpp"
 #include "Widgets/WebView.hpp"
 #include "DailyTips.hpp"
@@ -2798,6 +2799,10 @@ wxMenu* MainFrame::generate_help_menu()
             dlg.ShowModal();
         });
 
+    if (wxGetApp().is_editor())
+        append_menu_item(helpMenu, wxID_ANY, _L("Benchmark 3D Scene"), _L("Measure how fast the 3D scene renders in Prepare and Preview"),
+            [](wxCommandEvent&) { run_scene_benchmark(); });
+
     helpMenu->AppendSeparator();
 
     append_menu_item(helpMenu, wxID_ANY, _L("Show Tip of the Day"), _L("Show Tip of the Day"), [](wxCommandEvent&) {
@@ -3877,6 +3882,8 @@ bool MainFrame::load_config_file(const std::string &path)
         return false;
     }
     wxGetApp().load_current_presets();
+    if (Plater *plater = wxGetApp().plater())
+        plater->normalize_bed_types(false);
     return true;
 }
 
