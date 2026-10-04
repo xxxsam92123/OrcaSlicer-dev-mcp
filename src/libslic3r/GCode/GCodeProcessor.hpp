@@ -1178,7 +1178,7 @@ class Print;
         bool m_detect_layer_based_on_tag {false};
         int m_seams_count;
         bool m_measure_g29_time {false};
-        bool m_single_extruder_multi_material;
+        bool m_single_extruder_multi_material = false;
         float m_preheat_time;
         int m_preheat_steps;
         bool m_disable_m73;
@@ -1542,6 +1542,13 @@ class Print;
         int get_last_filament_id(bool force_initialize = true) const;
         //get current used extruder
         int get_extruder_id(bool force_initialize = true)const;
+        // Temperature slots are addressed in hotend space (see get_temperature_target_id_for_extruder);
+        // the per-vertex reader and the writers (the every-hotend branch fills the table directly) go
+        // through this pair so they cannot disagree.
+        int   get_temperature_target_id_for_extruder(int extruder_id) const;
+        bool  set_hotend_temperature(int slot, float temperature);
+        float hotend_temperature(int slot) const;
+
    };
 
 } /* namespace Slic3r */
