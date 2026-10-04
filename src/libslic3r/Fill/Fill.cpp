@@ -1,8 +1,20 @@
+#include <algorithm>
 #include <assert.h>
 #include <map>
 #include <numeric>
+#include <regex>
+#include <cstdlib>
+#include <cmath>
+#include <iterator>
+#include <math.h>
+#include <set>
 #include <stdio.h>
 #include <memory>
+#include <string>
+#include <vector>
+#include <queue>
+#include <unordered_set>
+#include <utility>
 
 #include "../ClipperUtils.hpp"
 #include "../Geometry.hpp"
@@ -12,10 +24,13 @@
 #include "../Surface.hpp"
 
 #include "AABBTreeLines.hpp"
+#include "libslic3r/Config.hpp"
+#include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/BoundingBox.hpp"
 #include "ExtrusionEntity.hpp"
 #include "Fill.hpp"
 #include "ExtrusionEntityCollection.hpp"
-#include "FillBase.hpp"
+#include "libslic3r/Fill/FillBase.hpp"
 #include "FillRectilinear.hpp"
 #include "FillLightning.hpp"
 #include "FillConcentricInternal.hpp"
@@ -24,6 +39,11 @@
 #include "FillConcentric.hpp"
 #include "../InternalSolidGrid.hpp"
 #include "../ExternalBridgeGrid.hpp"
+#include "libslic3r/Flow.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Line.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/Polyline.hpp"
 #include "libslic3r.h"
 
 namespace Slic3r {
