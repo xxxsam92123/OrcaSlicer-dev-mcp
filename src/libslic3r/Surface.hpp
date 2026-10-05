@@ -1,9 +1,17 @@
 #ifndef slic3r_Surface_hpp_
 #define slic3r_Surface_hpp_
 
+#include "Polygon.hpp"
+#include "Line.hpp"
+#include "Point.hpp"
 #include "libslic3r.h"
 #include "ExPolygon.hpp"
 #include <memory>
+#include <utility>
+#include <vector>
+#include <cstddef>
+#include <algorithm>
+#include <iterator>
 
 namespace Slic3r {
 
