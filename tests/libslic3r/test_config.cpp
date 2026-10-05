@@ -19,6 +19,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/nowide/fstream.hpp>
 #include "libslic3r/Config.hpp"
+#include <cstddef>
 #include <initializer_list>
 #include <memory>
 #include <map>
@@ -30,6 +31,7 @@
 #include <sstream>
 #include <vector>
 #include <utility>
+#include <catch2/matchers/catch_matchers_vector.hpp>
 
 namespace fs = boost::filesystem;
 

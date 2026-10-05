@@ -8,6 +8,9 @@
 
 #include <string>
 
+class wxWebView;
+class wxWindow;
+
 wxDECLARE_EVENT(EVT_WEBVIEW_RECREATED, wxCommandEvent);
 
 class WebView
