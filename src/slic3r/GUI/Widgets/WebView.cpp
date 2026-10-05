@@ -37,6 +37,9 @@
 #include <wx/osx/webview_webkit.h>
 #endif
 #include <wx/stdpaths.h>
+#include <boost/filesystem.hpp>
+
+namespace fs = boost::filesystem;
 #if defined(__WIN32__) || defined(__WXMAC__)
 #include "wx/private/jsscriptwrapper.h"
 #endif
