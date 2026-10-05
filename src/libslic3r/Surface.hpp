@@ -2,9 +2,7 @@
 #define slic3r_Surface_hpp_
 
 #include "Polygon.hpp"
-#include "Line.hpp"
 #include "Point.hpp"
-#include "libslic3r.h"
 #include "ExPolygon.hpp"
 #include <memory>
 #include <utility>
@@ -12,6 +10,7 @@
 #include <cstddef>
 #include <algorithm>
 #include <iterator>
+#include "BoundingBox.hpp"
 
 namespace Slic3r {
 
