@@ -38,6 +38,12 @@
 #endif
 #include <wx/stdpaths.h>
 #include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
+#include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/path.hpp>
+#include <ios>
+#include <string>
+#include <wx/versioninfo.h>
 
 namespace fs = boost::filesystem;
 #if defined(__WIN32__) || defined(__WXMAC__)
