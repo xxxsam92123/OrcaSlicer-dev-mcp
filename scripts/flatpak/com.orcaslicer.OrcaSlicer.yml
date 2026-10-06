@@ -254,8 +254,11 @@ modules:
         dest: external-packages/GMP
 
       # MPFR 4.2.2
+      # Served from a GNU mirror: ftp.gnu.org is unreachable from CI runners
+      # (the download times out and fails the whole Flatpak job), while
+      # mirrors.kernel.org serves the byte-identical tarball (same sha256).
       - type: file
-        url: https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.bz2
+        url: https://mirrors.kernel.org/gnu/mpfr/mpfr-4.2.2.tar.bz2
         sha256: 9ad62c7dc910303cd384ff8f1f4767a655124980bb6d8650fe62c815a231bb7b
         dest: external-packages/MPFR
 
