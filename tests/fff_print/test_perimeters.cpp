@@ -17,12 +17,15 @@
 #include <cmath>
 #include "libslic3r/PrintConfig.hpp"
 #include <cstddef>
+#include <cstdint>
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
 #include "libslic3r/Polyline.hpp"
+#include "libslic3r/Surface.hpp"
 #include <limits>
 #include <string>
 #include <utility>
