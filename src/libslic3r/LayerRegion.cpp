@@ -243,7 +243,6 @@ std::vector<Bridge> get_grouped_bridges(
     {
         result.reserve(bridge_expansions.size());
         uint32_t group_id = 0;
-        using std::move_iterator;
         for (ExPolygon& expolygon : bridge_expolygons)
             result.push_back({ std::move(expolygon), group_id ++, bridge_expansions.end() });
     }
@@ -445,7 +444,6 @@ Surfaces expand_bridges_detect_orientations(
     const float closing_radius
 )
 {
-    using namespace Slic3r::Algorithm;
 
     double thickness;
     ExPolygons bridge_expolygons = fill_surfaces_extract_expolygons(surfaces, {stBottomBridge}, thickness);
