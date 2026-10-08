@@ -4,12 +4,27 @@
 #include "slic3r/GUI/GUI.hpp"
 #include "slic3r/Utils/MacDarkMode.hpp"
 
+#include <algorithm>
 #include <boost/log/trivial.hpp>
 #include <boost/filesystem/path.hpp>
 
+#include <cassert>
 #include <chrono>
+#include <cstddef>
+#include <exception>
 #include <thread>
 
+#include <wx/setup.h>
+#include <wx/webview.h>
+#include <wx/string.h>
+#include <wx/gdicmn.h>
+#include <wx/sharedptr.h>
+#include <wx/vector.h>
+#include <wx/event.h>
+#include <vector>
+#include <wx/object.h>
+#include <wx/log.h>
+#include <utility>
 #include <wx/webviewarchivehandler.h>
 #include <wx/webviewfshandler.h>
 #include <wx/filename.h>
@@ -22,6 +37,15 @@
 #include <wx/osx/webview_webkit.h>
 #endif
 #include <wx/stdpaths.h>
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
+#include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/path.hpp>
+#include <ios>
+#include <string>
+#include <wx/versioninfo.h>
+
+namespace fs = boost::filesystem;
 #if defined(__WIN32__) || defined(__WXMAC__)
 #include "wx/private/jsscriptwrapper.h"
 #endif
@@ -277,19 +301,6 @@ static WebViewRef *webview_ref(wxWebView *webView)
     return webView ? static_cast<WebViewRef *>(webView->GetRefData()) : nullptr;
 }
 
-wxString WebView::BuildResourceUrl(std::string const &resource_path, bool append_language)
-{
-    wxFileName resource_file(Slic3r::GUI::from_u8((boost::filesystem::path(Slic3r::resources_dir()) / resource_path).make_preferred().string()));
-    resource_file.MakeAbsolute();
-
-    wxString target_url = wxFileSystem::FileNameToURL(resource_file);
-    if (append_language) {
-        const wxString language = Slic3r::GUI::wxGetApp().current_language_code_safe();
-        if (!language.empty())
-            target_url += wxT("?lang=") + language;
-    }
-    return target_url;
-}
 
 wxWebView* WebView::CreateWebView(wxWindow * parent, wxString const & url)
 {
@@ -403,6 +414,17 @@ void WebView::MarkScriptMessageHandlerAdded(wxWebView * webView)
 {
     if (WebViewRef *ref = webview_ref(webView))
         ref->m_script_handler_added = true;
+}
+
+bool WebView::NeedsRecreateOnShow()
+{
+    const bool recreating = Slic3r::GUI::wxGetApp().is_recreating_gui();
+    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": is_recreating_gui = " << recreating;
+#ifdef __WIN32__
+    return recreating;
+#else
+    return false;
+#endif
 }
 #if wxUSE_WEBVIEW_EDGE
 bool WebView::CheckWebViewRuntime()
