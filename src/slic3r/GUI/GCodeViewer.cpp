@@ -3555,25 +3555,18 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
     };
 
     auto append_range = [append_item](const libvgcode::ColorRange& range, unsigned int decimals) {
-        auto append_range_item = [append_item, &range](int i, float value, unsigned int decimals) {
+        auto append_range_item = [append_item, &range](float value, unsigned int decimals) {
             char buf[1024];
             ::sprintf(buf, "%.*f", decimals, value);
-            append_item(EItemType::Rect, libvgcode::convert(range.get_palette()[i]), { { buf , 0} });
+            // Paint the swatch with the color the view uses for that value, so the legend matches
+            // the toolpaths. ColorRange::get_values() returns the values the data really used, not
+            // one entry per palette color, so the palette index is not a value index.
+            append_item(EItemType::Rect, libvgcode::convert(range.get_color_at(value)), { { buf , 0} });
         };
 
-        std::vector<float> values = range.get_values();
-        if (values.size() == 1)
-            // single item use case
-            append_range_item(0, values.front(), decimals);
-        else if (values.size() == 2) {
-            append_range_item(static_cast<int>(range.get_palette().size()) - 1, values.back(), decimals);
-            append_range_item(0, values.front(), decimals);
-        }
-        else {
-            for (int i = static_cast<int>(range.get_palette().size()) - 1; i >= 0; --i) {
-                append_range_item(i, values[i], decimals);
-            }
-        }
+        const std::vector<float> values = range.get_values();
+        for (int i = static_cast<int>(values.size()) - 1; i >= 0; --i)
+            append_range_item(values[i], decimals);
     };
 
     auto append_headers = [&imgui, window_padding, this](const std::vector<std::pair<std::string, float>>& title_offsets) {

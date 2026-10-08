@@ -91,18 +91,15 @@ const std::array<float, 2>& ColorRange::get_range() const
 
 std::vector<float> ColorRange::get_values() const
 {
-    std::vector<float> ret;
+    if (!m_values.empty() && m_values.size() <= MAX_VALUES) {
+        // The values the data really used, as long as they still fit in a readable legend.
+        return m_values;
+    }
 
-    if (m_count == 1) {
-        // single item use case
-        ret.emplace_back(m_range[0]);
-    }
-    else if (m_count == 2) {
-        // two items use case
-        ret.emplace_back(m_range[0]);
-        ret.emplace_back(m_range[1]);
-    }
-    else {
+    // Fallback for data with no values at all, or with more distinct values than a legend can
+    // list: evenly spaced samples of the detected range.
+    std::vector<float> ret;
+    {
         const float step_size = get_step_size(*this);
         for (size_t i = 0; i < m_palette.size(); ++i) {
             float value = 0.0f;
@@ -122,13 +119,19 @@ std::vector<float> ColorRange::get_values() const
 size_t ColorRange::size_in_bytes_cpu() const
 {
     size_t ret = STDVEC_MEMSIZE(m_palette, Color);
+    ret += STDVEC_MEMSIZE(m_values, float);
     return ret;
 }
 
 void ColorRange::update(float value)
 {
-    if (value != m_range[0] && value != m_range[1])
-        ++m_count;
+    // Keep the distinct values, but stop collecting once a legend listing them would be
+    // unreadable: get_values() then falls back to evenly spaced samples of the range.
+    if (m_values.size() <= MAX_VALUES) {
+        const auto it = std::lower_bound(m_values.begin(), m_values.end(), value);
+        if (it == m_values.end() || *it != value)
+            m_values.insert(it, value);
+    }
 
     m_range[0] = std::min(m_range[0], value);
     m_range[1] = std::max(m_range[1], value);
@@ -137,7 +140,7 @@ void ColorRange::update(float value)
 void ColorRange::reset()
 {
     m_range = { FLT_MAX, -FLT_MAX };
-    m_count = 0;
+    m_values.clear();
 }
 
 } // namespace libvgcode
