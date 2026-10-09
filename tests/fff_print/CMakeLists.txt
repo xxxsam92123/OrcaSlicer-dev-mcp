@@ -10,6 +10,7 @@ add_executable(${_TEST_NAME}_tests
 	test_external_bridge_grid.cpp
 	test_internal_solid_grid.cpp
 	test_flow.cpp
+	test_gcode_processor.cpp
 	test_gcode_timing.cpp
 	test_gcode.cpp
 	test_gcodeprocessor.cpp
