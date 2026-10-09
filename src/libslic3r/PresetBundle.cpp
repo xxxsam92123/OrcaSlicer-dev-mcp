@@ -4746,16 +4746,59 @@ const std::set<std::string> ignore_settings_list ={
     "print_settings_id", "filament_settings_id", "printer_settings_id"
 };
 
-// Keys that full_fff_config() deliberately leaves out of the project config (see the filament loop
-// below). A "different from the parent" entry for one of them therefore carries no value anywhere, so a
-// loader that honours it can only drop the restriction the preset inherits from its parent. Keep them out
-// of the filament diff lists as well: see PresetCollection::load_external_preset().
-static const std::set<std::string> project_unsaved_filament_keys = { "compatible_prints", "compatible_printers" };
+// The two filament keys a project carries itself instead of through its flattened config: see
+// record_filament_compat_lists(), erase_project_unsaved_filament_keys() and apply_filament_compat_lists().
+static const std::set<std::string> project_filament_compat_keys = { "compatible_prints", "compatible_printers" };
 
-static void erase_project_unsaved_filament_keys(std::vector<std::string> &keys)
+// Record this filament's compatibility lists for the project to carry. The two keys hold a list of
+// printers/processes each, so the flattened project config cannot hold them (see the loops below); the
+// project carries them in "filament_compatible_printers" / "filament_compatible_prints" instead, one
+// escaped list per filament. A list is recorded where the project has to own it: for a filament that
+// deviates from the preset it inherits (the same condition under which its "different_settings_to_system"
+// entry lists the key), and for a filament without a parent preset, which has nothing to compare against -
+// for such a filament that is the only way a change made in the Dependencies tab can be kept. An empty
+// list ("All") has no value to carry, so the entry records it instead: see
+// erase_project_unsaved_filament_keys() and apply_filament_compat_lists().
+static void record_filament_compat_lists(size_t index, const DynamicPrintConfig &config, bool parent_known,
+                                         std::vector<std::string> &deviating_keys,
+                                         std::vector<std::string> &compatible_printers, std::vector<std::string> &compatible_prints)
+{
+    if (index >= compatible_printers.size() || index >= compatible_prints.size())
+        return;
+    const std::pair<const char *, std::vector<std::string> *> lists[] = {
+        { "compatible_printers", &compatible_printers },
+        { "compatible_prints",   &compatible_prints },
+    };
+    for (const auto &list : lists) {
+        const char *key = list.first;
+        const bool deviating = std::find(deviating_keys.begin(), deviating_keys.end(), key) != deviating_keys.end();
+        // Carried for a filament that deviates from the preset it inherits, and for a filament without a
+        // parent preset (which has nothing to compare against, so its list is carried as it is).
+        if (! deviating && parent_known)
+            continue;
+        const auto *opt = config.option<ConfigOptionStrings>(key);
+        if (opt == nullptr)
+            continue;
+        (*list.second)[index] = Slic3r::escape_strings_cstyle(opt->values);
+        if (opt->values.empty() && ! deviating)
+            deviating_keys.emplace_back(key);
+    }
+}
+
+// The value of those two keys travels in the project keys above, so the filament's
+// "different_settings_to_system" entry for them only repeats it and is dropped - except for a filament
+// whose list the user cleared ("All"): an empty list has no value to carry, so the entry is what records
+// it, both for this build (apply_filament_compat_lists) and for a reader that knows the
+// entry alone.
+static void erase_project_unsaved_filament_keys(std::vector<std::string> &keys, const DynamicPrintConfig &config)
 {
     keys.erase(std::remove_if(keys.begin(), keys.end(),
-                              [](const std::string &key) { return project_unsaved_filament_keys.count(key) != 0; }),
+                              [&config](const std::string &key) {
+                                  if (project_filament_compat_keys.count(key) == 0)
+                                      return false;
+                                  const auto *opt = config.option<ConfigOptionStrings>(key);
+                                  return opt != nullptr && ! opt->values.empty();
+                              }),
                keys.end());
 }
 
@@ -4856,6 +4899,10 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optio
         }
     }
 
+    // Per-filament compatibility lists of this project (see record_filament_compat_lists()).
+    std::vector<std::string> filament_compatible_printers(num_filaments);
+    std::vector<std::string> filament_compatible_prints(num_filaments);
+
     if (num_filaments <= 1) {
         //BBS: update filament config related with variants
         DynamicPrintConfig filament_config = this->filaments.get_edited_preset().config;
@@ -4875,13 +4922,13 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optio
 
         std::string different_filament_settings;
         const Preset* filament_parent_preset =  this->filaments.get_selected_preset_parent();
-        if (filament_parent_preset) {
-            std::vector<std::string> dirty_options = this->filaments.dirty_options_without_option_list(&(this->filaments.get_edited_preset()), filament_parent_preset, ignore_settings_list, false);
-            erase_project_unsaved_filament_keys(dirty_options);
-            if (!dirty_options.empty()) {
-                different_filament_settings = Slic3r::escape_strings_cstyle(dirty_options);
-            }
-        }
+        std::vector<std::string> dirty_options;
+        if (filament_parent_preset)
+            dirty_options = this->filaments.dirty_options_without_option_list(&(this->filaments.get_edited_preset()), filament_parent_preset, ignore_settings_list, false);
+        record_filament_compat_lists(0, filament_config, filament_parent_preset != nullptr, dirty_options, filament_compatible_printers, filament_compatible_prints);
+        erase_project_unsaved_filament_keys(dirty_options, filament_config);
+        if (!dirty_options.empty())
+            different_filament_settings = Slic3r::escape_strings_cstyle(dirty_options);
 
         different_settings.emplace_back(different_filament_settings);
 
@@ -4932,22 +4979,21 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optio
             else if (!filament_inherits.empty())
                 filament_parent_preset =  const_cast<PresetBundle*>(this)->filaments.find_preset(filament_inherits, false, true);
 
+            std::vector<std::string> dirty_options;
             if (filament_parent_preset) {
-                std::vector<std::string> dirty_options = cfg_rw.diff(filament_parent_preset->config);
-                if (!dirty_options.empty()) {
-                    auto iter = dirty_options.begin();
-                    while (iter != dirty_options.end()) {
-                        if (ignore_settings_list.find(*iter) != ignore_settings_list.end()) {
-                            iter = dirty_options.erase(iter);
-                        }
-                        else {
-                            ++iter;
-                        }
-                    }
-                    erase_project_unsaved_filament_keys(dirty_options);
-                    different_filament_settings = Slic3r::escape_strings_cstyle(dirty_options);
+                dirty_options = cfg_rw.diff(filament_parent_preset->config);
+                auto iter = dirty_options.begin();
+                while (iter != dirty_options.end()) {
+                    if (ignore_settings_list.find(*iter) != ignore_settings_list.end())
+                        iter = dirty_options.erase(iter);
+                    else
+                        ++iter;
                 }
             }
+            record_filament_compat_lists(index, cfg_rw, filament_parent_preset != nullptr, dirty_options, filament_compatible_printers, filament_compatible_prints);
+            erase_project_unsaved_filament_keys(dirty_options, cfg_rw);
+            if (!dirty_options.empty())
+                different_filament_settings = Slic3r::escape_strings_cstyle(dirty_options);
 
             different_settings.emplace_back(different_filament_settings);
         }
@@ -5079,6 +5125,37 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool apply_extruder, std::optio
     //BBS: add logic for settings check between different system presets
     add_if_some_non_empty(std::move(different_settings),            "different_settings_to_system");
     add_if_some_non_empty(std::move(print_compatible_printers),     "print_compatible_printers");
+
+    // One escaped list per filament, empty entries included: a cleared list ("All") is a value the project
+    // owns, and apply_filament_compat_lists() tells it apart from "this project does not touch the filament"
+    // by the filament's "different from the parent" entry read below. The keys are written only when the
+    // project owns something, so a project that never touched the lists stays free of them - a build that
+    // does not know them parses the project config with ForwardCompatibilitySubstitutionRule::Disable (see
+    // _extract_project_config_from_archive()) and would otherwise fail to load it.
+    bool carries_filament_lists = false;
+    if (const auto *entries = out.option<ConfigOptionStrings>("different_settings_to_system"))
+        for (const std::string &entry : entries->values) {
+            std::vector<std::string> keys;
+            Slic3r::unescape_strings_cstyle(entry, keys);
+            for (const std::string &key : project_filament_compat_keys)
+                if (std::find(keys.begin(), keys.end(), key) != keys.end())
+                    carries_filament_lists = true;
+        }
+    carries_filament_lists = carries_filament_lists ||
+        std::any_of(filament_compatible_printers.begin(), filament_compatible_printers.end(),
+                    [](const std::string &list) { return ! list.empty(); }) ||
+        std::any_of(filament_compatible_prints.begin(), filament_compatible_prints.end(),
+                    [](const std::string &list) { return ! list.empty(); });
+    if (carries_filament_lists && num_filaments > 0) {
+        out.set_key_value("filament_compatible_printers", new ConfigOptionStrings(std::move(filament_compatible_printers)));
+        out.set_key_value("filament_compatible_prints",   new ConfigOptionStrings(std::move(filament_compatible_prints)));
+    } else {
+        // Removed rather than left empty: every key the config holds is serialized into the project, and the
+        // whole point of not carrying them in this project is that a build which does not know them can still
+        // read it.
+        out.erase("filament_compatible_printers");
+        out.erase("filament_compatible_prints");
+    }
     out.option<ConfigOptionStrings>("extruder_ams_count", true)->values   = save_extruder_ams_count_to_string(this->extruder_ams_counts);
 
 	out.option<ConfigOptionEnumGeneric>("printer_technology", true)->value = ptFFF;
@@ -5322,6 +5399,38 @@ void PresetBundle::convert_filament_preset_name(const std::string& machine_name,
         }
     }
 }
+// Distribute the per-filament compatibility lists a project carries into the config the filament preset is
+// loaded from, and mark the ones the project owns in the "different" set, so that
+// PresetCollection::load_external_preset() keeps them instead of the parent preset's. A recorded non-empty
+// list is owned by itself; a recorded empty list ("All") is owned only where the project also lists the key
+// as differing from the parent. A key the project has nothing for - an older project, or a filament this
+// project does not touch - is dropped from the set, so the preset keeps its own list. See
+// full_fff_config() for what a project records.
+static void apply_filament_compat_lists(const std::vector<std::string> &compatible_printers, const std::vector<std::string> &compatible_prints,
+                                        size_t index, DynamicPrintConfig &config, std::set<std::string> &different_keys)
+{
+    const std::pair<const char *, const std::vector<std::string> *> lists[] = {
+        { "compatible_printers", &compatible_printers },
+        { "compatible_prints",   &compatible_prints },
+    };
+    for (const auto &list : lists) {
+        const char *key = list.first;
+        const std::vector<std::string> &recorded = *list.second;
+        const bool recorded_here = index < recorded.size();
+        if (recorded_here && ! recorded[index].empty()) {
+            std::vector<std::string> items;
+            Slic3r::unescape_strings_cstyle(recorded[index], items);
+            config.option<ConfigOptionStrings>(key, true)->values = std::move(items);
+        }
+        // A recorded empty list counts as the project's own choice only when it also listed the key as
+        // differing from the parent; otherwise the filament simply does not deviate in this project.
+        if (recorded_here && (! recorded[index].empty() || different_keys.count(key) != 0))
+            different_keys.insert(key);
+        else
+            different_keys.erase(key);
+    }
+}
+
 // Load a config file from a boost property_tree. This is a private method called from load_config_file.
 // is_external == false on if called from ConfigWizard
 void PresetBundle::load_config_file_config(const std::string &name_or_path, bool is_external, DynamicPrintConfig &&config, Semver file_version, bool selected, PublishedConfig *published_config)
@@ -5370,6 +5479,8 @@ void PresetBundle::load_config_file_config(const std::string &name_or_path, bool
     std::vector<std::string> inherits_values                        = std::move(config.option<ConfigOptionStrings>("inherits_group", true)->values);
     std::vector<std::string> filament_ids                           = std::move(config.option<ConfigOptionStrings>("filament_ids", true)->values);
     std::vector<std::string> print_compatible_printers              = std::move(config.option<ConfigOptionStrings>("print_compatible_printers", true)->values);
+    std::vector<std::string> filament_compatible_printers           = std::move(config.option<ConfigOptionStrings>("filament_compatible_printers", true)->values);
+    std::vector<std::string> filament_compatible_prints             = std::move(config.option<ConfigOptionStrings>("filament_compatible_prints", true)->values);
     //BBS: add different settings check logic
     bool has_different_settings_to_system                           = config.option("different_settings_to_system")?true:false;
     std::vector<std::string> different_values                       = std::move(config.option<ConfigOptionStrings>("different_settings_to_system", true)->values);
@@ -5510,6 +5621,8 @@ void PresetBundle::load_config_file_config(const std::string &name_or_path, bool
                 //BBS: add different settings logic
                 std::set<std::string> filament_different_keys_set = project_different_keys(different_values[1]);
 
+                apply_filament_compat_lists(filament_compatible_printers, filament_compatible_prints, 0, config, filament_different_keys_set);
+
                 std::string filament_id = filament_ids[0];
                 //BBS: add config related logs
                 BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": load single filament preset from filament_settings_id");
@@ -5572,6 +5685,8 @@ void PresetBundle::load_config_file_config(const std::string &name_or_path, bool
 
                     //BBS: add different settings logic
                     std::set<std::string> filament_different_keys_set = project_different_keys(different_values[i+1]);
+
+                    apply_filament_compat_lists(filament_compatible_printers, filament_compatible_prints, i, cfg, filament_different_keys_set);
 
                     std::string filament_id = filament_ids[i];
 
