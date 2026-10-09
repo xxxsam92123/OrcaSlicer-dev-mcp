@@ -109,7 +109,6 @@ class PlaterPresetComboBox;
 class PartPlateList;
 class SyncNozzleAndAmsDialog;
 class FinishSyncAmsDialog;
-using t_optgroups = std::vector <std::shared_ptr<ConfigOptionsGroup>>;
 
 class Plater;
 enum class ActionButtonType : int;
@@ -327,7 +326,6 @@ private:
 class Plater: public wxPanel
 {
 public:
-    using fs_path = boost::filesystem::path;
 
     Plater(wxWindow *parent, MainFrame *main_frame);
     Plater(Plater &&) = delete;
