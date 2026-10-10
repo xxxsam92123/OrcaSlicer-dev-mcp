@@ -16,19 +16,29 @@
 #define NANOSVGRAST_IMPLEMENTATION
 #include "nanosvg/nanosvgrast.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
-#include <string>
 #include <functional>
+#include <map>
+#include <ratio>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "libslic3r/Config.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Semver.hpp"
 #include "libslic3r/TextureDisplacement.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"
 #include "libslic3r/Utils.hpp"
 
 #include <boost/filesystem.hpp>
+#include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/path.hpp>
 
 using namespace Slic3r;
 
